@@ -67,8 +67,8 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
         {
             label: 'ผู้เช่า',
             icon: <User className="w-5 h-5 mr-3" />,
-            path: '/settings?tab=tenants',
-            active: tab === 'tenants'
+            path: '/tenants',
+            active: path === '/tenants'
         },
         {
             label: 'พนักงาน',

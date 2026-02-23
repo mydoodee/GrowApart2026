@@ -10,7 +10,7 @@ import { sendPasswordResetEmail } from 'firebase/auth';
 import {
     Save, Layers, CheckCircle2,
     Plus, Trash2, MapPin, Info, LayoutGrid, ClipboardList, Check, Phone, QrCode, User, CreditCard, Building,
-    Zap, Droplets, PlusSquare, X, MessageSquare, Loader2, Link as LinkIcon
+    Zap, Droplets, PlusSquare, X, MessageSquare, Loader2, Link as LinkIcon, Search, ChevronDown
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Toast, { useToast } from '../components/Toast';
@@ -60,6 +60,9 @@ export default function ApartmentSettings({ user }) {
     const [requests, setRequests] = useState([]);
     const [staffMembers, setStaffMembers] = useState([]);
     const [tenants, setTenants] = useState([]);
+    const [selectedTenant, setSelectedTenant] = useState(null);
+    const [collapsedFloors, setCollapsedFloors] = useState(new Set());
+    const [tenantSearch, setTenantSearch] = useState('');
     const [rooms, setRooms] = useState([]);
     const [utilityRates, setUtilityRates] = useState({
         electricity: 7, // Baht per unit
@@ -364,6 +367,7 @@ export default function ApartmentSettings({ user }) {
                         const newRoomRef = await addDoc(collection(db, 'rooms'), {
                             ...selectedRoomObj,
                             tenantId: request.userId,
+                            tenantName: request.userName,
                             status: 'ไม่ว่าง',
                             fixedExpenses: approvalExpenses,
                             amenities: approvalAmenities,
@@ -376,6 +380,7 @@ export default function ApartmentSettings({ user }) {
                 if (roomId) {
                     await updateDoc(doc(db, 'rooms', roomId), {
                         tenantId: request.userId,
+                        tenantName: request.userName,
                         status: 'ไม่ว่าง',
                         fixedExpenses: approvalExpenses,
                         amenities: approvalAmenities,
@@ -1034,67 +1039,302 @@ export default function ApartmentSettings({ user }) {
                                 </div>
                             )}
 
-                            {activeTab === 'tenants' && (
-                                <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <div>
-                                        <h3 className="text-xl font-bold text-white uppercase tracking-tight">รายชื่อผู้เช่า</h3>
-                                        <p className="text-brand-gray-400 text-xs font-medium mt-1">ข้อมูลผู้เช่าทั้งหมดในอาคาร</p>
-                                    </div>
+                            {activeTab === 'tenants' && (() => {
+                                // Build floor->tenants map
+                                const floorMap = {};
+                                floors.forEach(fl => { floorMap[fl.id] = []; });
+                                tenants.forEach(tenant => {
+                                    const role = tenant.apartmentRoles?.[activeAptId];
+                                    if (!role) return;
+                                    const roomNum = role.roomNumber || '';
+                                    const roomObj = rooms.find(r => r.roomNumber === roomNum);
+                                    const floorId = roomObj?.floor || (roomNum ? parseInt(roomNum.toString()[0]) : null);
+                                    if (floorId && floorMap[floorId] !== undefined) {
+                                        floorMap[floorId].push({ ...tenant, roomNumber: roomNum, roomObj });
+                                    } else if (floorId) {
+                                        floorMap[floorId] = [{ ...tenant, roomNumber: roomNum, roomObj }];
+                                    }
+                                });
 
-                                    {activeAptId && activeAptId !== 'all' && (
-                                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-5 mb-5 flex flex-col md:flex-row items-center gap-6">
-                                            <div className="bg-white p-3 rounded-xl shadow-lg border-2 border-emerald-500">
-                                                <QRCodeSVG
-                                                    value={`${window.location.origin}/join-tenant/${activeAptId}`}
-                                                    size={110}
-                                                    level={"H"}
-                                                />
+                                const sq = tenantSearch.trim().toLowerCase();
+                                const occupiedCount = tenants.length;
+                                const totalRooms = rooms.length;
+
+                                const toggleFloor = (id) => {
+                                    setCollapsedFloors(prev => {
+                                        const next = new Set(prev);
+                                        next.has(id) ? next.delete(id) : next.add(id);
+                                        return next;
+                                    });
+                                };
+
+                                return (
+                                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                        {/* Header row */}
+                                        <div className="flex items-start justify-between mb-4">
+                                            <div>
+                                                <h3 className="text-xl font-bold text-white uppercase tracking-tight">รายชื่อผู้เช่า</h3>
+                                                <p className="text-brand-gray-400 text-xs font-medium mt-1">จัดตามชั้นและห้องพัก</p>
                                             </div>
-                                            <div className="flex-1 text-center md:text-left">
-                                                <h4 className="text-white font-bold text-lg mb-2 flex items-center justify-center md:justify-start">
-                                                    <QrCode className="w-5 h-5 mr-2 text-emerald-500" />
-                                                    คิวอาร์โค้ดลงทะเบียนผู้เช่า
-                                                </h4>
-                                                <p className="text-brand-gray-400 text-xs mb-4">
-                                                    ให้ผู้เช่าแสกน QR Code นี้เพื่อลงทะเบียนเข้าสู่ระบบ (คุณจะเป็นผู้เลือกห้องให้ในขั้นตอนอนุมัติ)
-                                                </p>
-                                                <button
-                                                    onClick={() => {
-                                                        navigator.clipboard.writeText(`${window.location.origin}/join-tenant/${activeAptId}`);
-                                                        showToast('คัดลอกลิงก์จองห้องพักแล้ว', 'success');
-                                                    }}
-                                                    className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-[11px] font-bold transition-all inline-flex items-center tracking-wide"
-                                                >
-                                                    <ClipboardList className="w-4 h-4 mr-2" /> คัดลอกลิงก์ลงทะเบียน
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="space-y-3">
-                                        {tenants.map((tenant, index) => (
-                                            <div key={tenant.id || index} className="flex items-center justify-between p-4 rounded-xl border border-white/10 bg-brand-bg/50 group hover:border-brand-orange-500/30 transition-all">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white group-hover:bg-brand-orange-500/20 group-hover:text-brand-orange-500 transition-all">
-                                                        <User className="w-5 h-5" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="text-white font-bold text-sm leading-none mb-1">{tenant.name || tenant.displayName || 'Unknown Tenant'}</h4>
-                                                        <p className="text-[11px] font-bold text-brand-gray-300">{tenant.phone || tenant.email || 'No contact info'}</p>
-                                                    </div>
+                                            <div className="flex items-center gap-3 shrink-0">
+                                                <div className="text-right">
+                                                    <p className="text-2xl font-black text-white leading-none">{occupiedCount}<span className="text-brand-gray-500 text-sm font-bold">/{totalRooms}</span></p>
+                                                    <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ห้องมีผู้เช่า</p>
                                                 </div>
-                                                {tenant.apartmentRoles?.[activeAptId]?.roomId && (
-                                                    <div className="bg-brand-orange-500/10 border border-brand-orange-500/20 text-brand-orange-500 px-3 py-1 rounded-lg text-[10px] font-bold">
-                                                        Room {tenant.apartmentRoles[activeAptId].roomNumber || '?'}
-                                                    </div>
+                                                {activeAptId && activeAptId !== 'all' && (
+                                                    <button
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(`${window.location.origin}/join-tenant/${activeAptId}`);
+                                                            showToast('คัดลอกลิงก์แล้ว', 'success');
+                                                        }}
+                                                        className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-[10px] font-bold transition-all inline-flex items-center gap-1.5"
+                                                    >
+                                                        <QrCode className="w-3.5 h-3.5" /> QR ลงทะเบียน
+                                                    </button>
                                                 )}
                                             </div>
-                                        ))}
+                                        </div>
+
+                                        {/* Search bar */}
+                                        <div className="relative mb-4">
+                                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-500" />
+                                            <input
+                                                type="text"
+                                                value={tenantSearch}
+                                                onChange={e => setTenantSearch(e.target.value)}
+                                                placeholder="ค้นหาชื่อ, เบอร์เลขห้อง, เบอร์โทร..."
+                                                className="w-full bg-brand-bg/60 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm font-medium text-white placeholder:text-brand-gray-600 outline-none focus:border-brand-orange-500/50 transition-all"
+                                            />
+                                            {tenantSearch && (
+                                                <button onClick={() => setTenantSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-gray-500 hover:text-white transition-colors">
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Main layout: list + detail panel */}
+                                        <div className="flex gap-4 items-start">
+                                            {/* Floor list */}
+                                            <div className={`space-y-3 transition-all duration-300 ${selectedTenant ? 'w-1/2 lg:w-7/12' : 'w-full'}`}>
+                                                {floors.length === 0 ? (
+                                                    <div className="text-center py-16 border border-dashed border-white/10 rounded-xl">
+                                                        <User className="w-8 h-8 text-brand-gray-600 mx-auto mb-3" />
+                                                        <p className="text-brand-gray-500 font-bold text-sm">ยังไม่มีการตั้งค่าชั้นในอาคาร</p>
+                                                    </div>
+                                                ) : (
+                                                    floors.map(floor => {
+                                                        const floorTenants = floorMap[floor.id] || [];
+                                                        const floorRooms = rooms.filter(r => r.floor === floor.id);
+                                                        const allRooms = floorRooms.length > 0
+                                                            ? floorRooms
+                                                            : Array.from({ length: floor.roomCount }, (_, i) => ({
+                                                                roomNumber: `${floor.id}${(i + 1).toString().padStart(2, '0')}`,
+                                                                floor: floor.id,
+                                                                status: 'ว่าง'
+                                                            }));
+
+                                                        // Filter rooms by search query
+                                                        const filteredRooms = sq
+                                                            ? allRooms.filter(room => {
+                                                                if (room.roomNumber?.toLowerCase().includes(sq)) return true;
+                                                                const t = floorTenants.find(t => t.roomNumber === room.roomNumber);
+                                                                if (!t) return false;
+                                                                const name = (t.name || t.displayName || '').toLowerCase();
+                                                                const phone = (t.phone || '').toLowerCase();
+                                                                const email = (t.email || '').toLowerCase();
+                                                                return name.includes(sq) || phone.includes(sq) || email.includes(sq);
+                                                            })
+                                                            : allRooms;
+
+                                                        // Hide entire floor if search returns nothing
+                                                        if (sq && filteredRooms.length === 0) return null;
+
+                                                        const isCollapsed = collapsedFloors.has(floor.id);
+
+                                                        return (
+                                                            <div key={floor.id} className="bg-brand-bg/50 border border-white/8 rounded-2xl overflow-hidden">
+                                                                {/* Floor header — clickable to collapse */}
+                                                                <button
+                                                                    onClick={() => toggleFloor(floor.id)}
+                                                                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
+                                                                >
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="w-7 h-7 bg-brand-orange-500/10 rounded-lg flex items-center justify-center shrink-0">
+                                                                            <span className="text-brand-orange-500 font-black text-xs">{floor.id}</span>
+                                                                        </div>
+                                                                        <p className="text-white font-bold text-sm">ชั้น {floor.id}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                                            {floorTenants.length}/{floorRooms.length || floor.roomCount} ห้อง
+                                                                        </span>
+                                                                        <ChevronDown className={`w-4 h-4 text-brand-gray-500 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`} />
+                                                                    </div>
+                                                                </button>
+
+                                                                {/* Room rows — collapsible */}
+                                                                {!isCollapsed && (
+                                                                    <div className="divide-y divide-white/5 border-t border-white/5">
+                                                                        {filteredRooms.map(room => {
+                                                                            const tenant = floorTenants.find(t => t.roomNumber === room.roomNumber);
+                                                                            const isSelected = selectedTenant?.id === tenant?.id;
+                                                                            return (
+                                                                                <div
+                                                                                    key={room.roomNumber}
+                                                                                    onClick={() => tenant && setSelectedTenant(isSelected ? null : tenant)}
+                                                                                    className={`flex items-center justify-between px-4 py-3 transition-all ${tenant
+                                                                                        ? isSelected
+                                                                                            ? 'bg-brand-orange-500/10 cursor-pointer'
+                                                                                            : 'hover:bg-white/5 cursor-pointer'
+                                                                                        : 'opacity-40'
+                                                                                        }`}
+                                                                                >
+                                                                                    <div className="flex items-center gap-3">
+                                                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-black shrink-0 transition-all ${tenant
+                                                                                            ? isSelected
+                                                                                                ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/30'
+                                                                                                : 'bg-brand-orange-500/15 text-brand-orange-400'
+                                                                                            : 'bg-white/5 text-brand-gray-600'
+                                                                                            }`}>
+                                                                                            {room.roomNumber}
+                                                                                        </div>
+                                                                                        {tenant ? (
+                                                                                            <div className="min-w-0">
+                                                                                                <p className={`font-bold text-sm leading-none mb-1 truncate transition-colors ${isSelected ? 'text-brand-orange-400' : 'text-white'
+                                                                                                    }`}>
+                                                                                                    {tenant.name || tenant.displayName || 'ไม่มีชื่อ'}
+                                                                                                </p>
+                                                                                                <p className="text-[11px] text-brand-gray-400 font-medium truncate">
+                                                                                                    {tenant.phone || tenant.email || '-'}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            <p className="text-brand-gray-600 text-sm font-bold">ห้องว่าง</p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    {tenant ? (
+                                                                                        <div className="flex items-center gap-2 shrink-0">
+                                                                                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                                                                            <span className="text-[10px] font-bold text-emerald-400 uppercase hidden sm:block">มีผู้เช่า</span>
+                                                                                            {isSelected && <X className="w-3.5 h-3.5 text-brand-orange-400 ml-1" />}
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <span className="text-[10px] font-bold text-brand-gray-600 uppercase">ว่าง</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+
+                                            {/* Detail panel */}
+                                            {selectedTenant && (
+                                                <div className="w-1/2 lg:w-5/12 sticky top-20 animate-in slide-in-from-right-4 fade-in duration-300">
+                                                    <div className="bg-brand-card border border-white/10 rounded-2xl overflow-hidden shadow-xl">
+                                                        <div className="relative px-5 pt-5 pb-4 border-b border-white/5">
+                                                            <button
+                                                                onClick={() => setSelectedTenant(null)}
+                                                                className="absolute top-4 right-4 w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+                                                            >
+                                                                <X className="w-3.5 h-3.5 text-brand-gray-400" />
+                                                            </button>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-12 h-12 bg-brand-orange-500/15 rounded-2xl flex items-center justify-center shrink-0">
+                                                                    {selectedTenant.photoURL ? (
+                                                                        <img src={selectedTenant.photoURL} className="w-full h-full object-cover rounded-2xl" alt="" />
+                                                                    ) : (
+                                                                        <User className="w-6 h-6 text-brand-orange-400" />
+                                                                    )}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <h4 className="text-white font-bold text-base leading-tight truncate">
+                                                                        {selectedTenant.name || selectedTenant.displayName || 'ไม่มีชื่อ'}
+                                                                    </h4>
+                                                                    <div className="flex items-center gap-1.5 mt-1">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                                                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide">ผู้เช่าปัจจุบัน</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="p-5 space-y-3">
+                                                            <div className="flex items-center justify-between py-2 border-b border-white/5">
+                                                                <span className="text-[11px] font-bold text-brand-gray-500 uppercase tracking-wider">ห้องพัก</span>
+                                                                <span className="bg-brand-orange-500/10 border border-brand-orange-500/20 text-brand-orange-400 px-3 py-1 rounded-lg text-xs font-black">ห้อง {selectedTenant.roomNumber || '-'}</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between py-2 border-b border-white/5">
+                                                                <span className="text-[11px] font-bold text-brand-gray-500 uppercase tracking-wider">ชั้น</span>
+                                                                <span className="text-white font-bold text-sm">{selectedTenant.roomObj?.floor || (selectedTenant.roomNumber ? selectedTenant.roomNumber.toString()[0] : '-')}</span>
+                                                            </div>
+                                                            {selectedTenant.phone && (
+                                                                <div className="flex items-center justify-between py-2 border-b border-white/5">
+                                                                    <span className="text-[11px] font-bold text-brand-gray-500 uppercase tracking-wider">โทรศัพท์</span>
+                                                                    <a href={`tel:${selectedTenant.phone}`} className="text-white font-bold text-sm hover:text-brand-orange-400 transition-colors">{selectedTenant.phone}</a>
+                                                                </div>
+                                                            )}
+                                                            {selectedTenant.email && (
+                                                                <div className="flex items-center justify-between py-2 border-b border-white/5">
+                                                                    <span className="text-[11px] font-bold text-brand-gray-500 uppercase tracking-wider">อีเมล</span>
+                                                                    <span className="text-white font-bold text-xs truncate max-w-[60%] text-right">{selectedTenant.email}</span>
+                                                                </div>
+                                                            )}
+                                                            {selectedTenant.apartmentRoles?.[activeAptId]?.joinedAt && (
+                                                                <div className="flex items-center justify-between py-2 border-b border-white/5">
+                                                                    <span className="text-[11px] font-bold text-brand-gray-500 uppercase tracking-wider">เข้าพักตั้งแต่</span>
+                                                                    <span className="text-white font-bold text-sm">
+                                                                        {selectedTenant.apartmentRoles[activeAptId].joinedAt?.toDate
+                                                                            ? selectedTenant.apartmentRoles[activeAptId].joinedAt.toDate().toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })
+                                                                            : '-'}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {selectedTenant.roomObj?.price && (
+                                                                <div className="flex items-center justify-between py-2 border-b border-white/5">
+                                                                    <span className="text-[11px] font-bold text-brand-gray-500 uppercase tracking-wider">ค่าเช่า/เดือน</span>
+                                                                    <span className="text-white font-bold text-sm">{selectedTenant.roomObj.price.toLocaleString()} บ.</span>
+                                                                </div>
+                                                            )}
+                                                            {selectedTenant.roomObj?.amenities?.filter(a => a.status).length > 0 && (
+                                                                <div className="pt-1">
+                                                                    <p className="text-[11px] font-bold text-brand-gray-500 uppercase tracking-wider mb-2">สิ่งอำนวยความสะดวก</p>
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {selectedTenant.roomObj.amenities.filter(a => a.status).map((a, i) => (
+                                                                            <span key={i} className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-full text-[10px] font-bold text-brand-gray-300">{a.name}</span>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="px-5 pb-5">
+                                                            <button
+                                                                onClick={() => handleResetPassword(selectedTenant.email)}
+                                                                disabled={!selectedTenant.email}
+                                                                className="w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-40"
+                                                            >
+                                                                ส่งลิงก์รีเซ็ตรหัสผ่าน
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {tenants.length === 0 && (
-                                            <p className="text-center py-10 text-brand-gray-500 font-bold text-sm">ยังไม่มีผู้เช่าลงทะเบียนในตึกนี้</p>
+                                            <div className="text-center py-10 border border-dashed border-white/10 rounded-xl mt-4">
+                                                <User className="w-8 h-8 text-brand-gray-600 mx-auto mb-3" />
+                                                <p className="text-brand-gray-500 font-bold text-sm">ยังไม่มีผู้เช่าลงทะเบียนในตึกนี้</p>
+                                            </div>
                                         )}
                                     </div>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             {activeTab === 'requests' && (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
