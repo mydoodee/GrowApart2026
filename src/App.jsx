@@ -13,6 +13,7 @@ import BuildingPicker from './pages/BuildingPicker';
 import TenantDashboard from './pages/TenantDashboard';
 import TenantJoin from './pages/TenantJoin';
 import StaffJoin from './pages/StaffJoin';
+import TenantManagement from './pages/TenantManagement';
 import TenantJoinGeneral from './pages/TenantJoinGeneral';
 import TenantLogin from './pages/TenantLogin';
 
@@ -146,6 +147,12 @@ function App() {
         <Route path="/tenant-dashboard" element={
           <ProtectedRoute user={user} userRole={userRole} allowedRoles={['tenant']}>
             <TenantDashboard user={user} />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/tenants" element={
+          <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
+            <TenantManagement user={user} />
           </ProtectedRoute>
         } />
 
