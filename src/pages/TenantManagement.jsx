@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import {
     collection, doc, getDoc, getDocs, query, where, onSnapshot,
-    orderBy, updateDoc, setDoc, deleteField
+    orderBy, updateDoc, setDoc, deleteField, addDoc, Timestamp
 } from 'firebase/firestore';
 import { getAuth, sendPasswordResetEmail as firebaseSendReset } from 'firebase/auth';
 import { db } from '../firebase';
@@ -31,7 +31,7 @@ const StatusChip = ({ status }) => {
     };
     const s = map[status] || { cls: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20', icon: <Clock className="w-3 h-3" />, label: 'รอชำระ' };
     return (
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border ${s.cls}`}>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${s.cls}`}>
             {s.icon} {s.label}
         </span>
     );
@@ -40,6 +40,7 @@ const StatusChip = ({ status }) => {
 // ─── main ─────────────────────────────────────────────────────────────────────
 export default function TenantManagement({ user }) {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { toast, showToast, hideToast } = useToast();
 
     const [profile, setProfile] = useState(null);
@@ -113,6 +114,30 @@ export default function TenantManagement({ user }) {
         load().catch(err => { console.error(err); setLoading(false); });
         return () => { if (unsub) unsub(); };
     }, [user, activeAptId]);
+
+    // Deep linking: Auto-select tenant from URL param
+    useEffect(() => {
+        if (loading || tenants.length === 0 || rooms.length === 0) return;
+        const targetId = searchParams.get('tenantId');
+        if (!targetId) return;
+
+        const tenant = tenants.find(t => t.id === targetId);
+        if (tenant) {
+            const rn = tenant.apartmentRoles?.[activeAptId]?.roomNumber;
+            const roomObj = rooms.find(r => r.roomNumber === rn);
+            setSelectedTenant({ ...tenant, roomNumber: rn, roomObj });
+
+            // Set floor filter to show the tenant's room
+            if (filterFloor !== 'all' && roomObj && roomObj.floor !== parseInt(filterFloor)) {
+                setFilterFloor('all');
+            }
+        }
+
+        // Clear param so re-selecting doesn't loop
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('tenantId');
+        setSearchParams(newParams, { replace: true });
+    }, [loading, tenants, rooms, searchParams]);
 
     // ── payments ──────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -238,6 +263,24 @@ export default function TenantManagement({ user }) {
         setMoveOutSaving(true);
         try {
             const roomNum = selectedTenant.roomNumber;
+            const tenantName = selectedTenant.name || selectedTenant.displayName || '';
+            const aptData = apartments.find(a => a.id === activeAptId);
+            const roleData = selectedTenant.apartmentRoles?.[activeAptId];
+
+            // 0. Save tenant history before removing
+            await addDoc(collection(db, 'tenantHistory'), {
+                tenantId: selectedTenant.id,
+                tenantName,
+                tenantEmail: selectedTenant.email || '',
+                tenantPhone: selectedTenant.phone || '',
+                roomNumber: roomNum,
+                floor: selectedTenant.roomObj?.floor || parseInt(roomNum?.toString()[0]) || 1,
+                apartmentId: activeAptId,
+                apartmentName: aptData?.name || '',
+                joinedAt: roleData?.joinedAt || null,
+                movedOutAt: Timestamp.now(),
+                rentPrice: selectedTenant.roomObj?.price || 0,
+            });
 
             // 1. Remove apartmentRoles from user
             const tenantRef = doc(db, 'users', selectedTenant.id);
@@ -317,7 +360,7 @@ export default function TenantManagement({ user }) {
                             <button
                                 key={f}
                                 onClick={() => setFilterFloor(f.toString())}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${filterFloor === f.toString()
+                                className={`px-4 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wider transition-all border ${filterFloor === f.toString()
                                     ? 'bg-brand-orange-500 border-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/25'
                                     : 'bg-brand-bg/40 border-white/5 text-brand-gray-400 hover:text-white hover:bg-white/10'
                                     }`}
@@ -328,13 +371,13 @@ export default function TenantManagement({ user }) {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                         <div className="bg-brand-orange-500/10 px-4 py-2 rounded-xl border border-brand-orange-500/20 flex items-center gap-2 h-10">
-                            <p className="text-[9px] font-black text-brand-orange-500 uppercase tracking-widest opacity-80">ผู้เช่า</p>
-                            <p className="text-base font-black text-white leading-none">{occupiedCount}<span className="text-brand-gray-500 text-xs font-bold">/{totalRooms}</span></p>
+                            <p className="text-[9px] font-medium text-brand-orange-500 uppercase tracking-widest opacity-80">ผู้เช่า</p>
+                            <p className="text-base font-bold text-white leading-none">{occupiedCount}<span className="text-brand-gray-500 text-xs font-medium">/{totalRooms}</span></p>
                         </div>
                         {activeAptId && activeAptId !== 'all' && (
                             <button
                                 onClick={() => setShowQRModal(true)}
-                                className="h-10 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-[10px] font-black transition-all inline-flex items-center gap-1.5"
+                                className="h-10 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-[10px] font-semibold transition-all inline-flex items-center gap-1.5"
                             >
                                 <QrCode className="w-3.5 h-3.5" /> QR
                             </button>
@@ -413,13 +456,13 @@ export default function TenantManagement({ user }) {
 
                                             {/* avatar + name */}
                                             <div className="flex items-center gap-2">
-                                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white font-black text-xs shrink-0 ${getAvatarBg(name)}`}>
+                                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0 ${getAvatarBg(name)}`}>
                                                     {tenant.photoURL
                                                         ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-lg" alt="" />
                                                         : (initial || <User className="w-3.5 h-3.5" />)
                                                     }
                                                 </div>
-                                                <p className={`font-bold text-xs leading-tight truncate ${isSelected ? 'text-brand-orange-300' : 'text-white'}`}>
+                                                <p className={`font-medium text-xs leading-tight truncate ${isSelected ? 'text-brand-orange-300' : 'text-white'}`}>
                                                     {name || 'ไม่มีชื่อ'}
                                                 </p>
                                             </div>
@@ -428,7 +471,7 @@ export default function TenantManagement({ user }) {
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-1">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
-                                                    <span className="text-[9px] font-bold text-emerald-400">มีผู้เช่า</span>
+                                                    <span className="text-[9px] font-medium text-emerald-400">มีผู้เช่า</span>
                                                 </div>
                                                 {joinedAt?.toDate && (
                                                     <span className="text-[9px] text-brand-gray-600">
@@ -454,7 +497,7 @@ export default function TenantManagement({ user }) {
                                         <X className="w-3.5 h-3.5 text-brand-gray-400" />
                                     </button>
                                     <div className="flex items-center gap-3 pr-8">
-                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-lg shrink-0 ${getAvatarBg(selectedTenant.name || selectedTenant.displayName || '')}`}>
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg shrink-0 ${getAvatarBg(selectedTenant.name || selectedTenant.displayName || '')}`}>
                                             {selectedTenant.photoURL
                                                 ? <img src={selectedTenant.photoURL} className="w-full h-full object-cover rounded-2xl" alt="" />
                                                 : ((selectedTenant.name || selectedTenant.displayName || '').slice(0, 1).toUpperCase() || <User className="w-6 h-6" />)
@@ -467,11 +510,11 @@ export default function TenantManagement({ user }) {
                                             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap gap-y-1">
                                                 <div className="flex items-center gap-1">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                                                    <span className="text-[10px] font-bold text-emerald-400 uppercase">ผู้เช่า</span>
+                                                    <span className="text-[10px] font-semibold text-emerald-400 uppercase">ผู้เช่า</span>
                                                 </div>
                                                 <button
-                                                    onClick={() => navigate('/rooms')}
-                                                    className="bg-brand-orange-500/15 hover:bg-brand-orange-500/25 border border-brand-orange-500/25 hover:border-brand-orange-500/40 text-brand-orange-400 px-2 py-0.5 rounded-lg text-[10px] font-black transition-all inline-flex items-center gap-1 group"
+                                                    onClick={() => navigate(`/rooms?room=${selectedTenant.roomNumber}`)}
+                                                    className="bg-brand-orange-500/15 hover:bg-brand-orange-500/25 border border-brand-orange-500/25 hover:border-brand-orange-500/40 text-brand-orange-400 px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all inline-flex items-center gap-1 group"
                                                 >
                                                     <Home className="w-2.5 h-2.5" />
                                                     ห้อง {selectedTenant.roomNumber}
@@ -498,17 +541,17 @@ export default function TenantManagement({ user }) {
                                             selectedTenant.roomObj?.price && { label: 'ค่าเช่า/เดือน', value: `${selectedTenant.roomObj.price.toLocaleString()} บ.` },
                                         ].filter(Boolean).map((row, i) => (
                                             <div key={i} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                                                <span className="text-[11px] font-bold text-brand-gray-500 uppercase tracking-wider shrink-0">{row.label}</span>
-                                                <span className="text-white font-bold text-sm text-right">{row.value}</span>
+                                                <span className="text-[11px] font-medium text-brand-gray-500 uppercase tracking-wider shrink-0">{row.label}</span>
+                                                <span className="text-white font-semibold text-sm text-right">{row.value}</span>
                                             </div>
                                         ))}
 
                                         {selectedTenant.roomObj?.amenities?.filter(a => a.status).length > 0 && (
                                             <div className="pt-2 pb-1">
-                                                <p className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-wider mb-1.5">สิ่งอำนวยความสะดวก</p>
+                                                <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-1.5">สิ่งอำนวยความสะดวก</p>
                                                 <div className="flex flex-wrap gap-1">
                                                     {selectedTenant.roomObj.amenities.filter(a => a.status).map((a, i) => (
-                                                        <span key={i} className="px-2 py-0.5 bg-white/5 border border-white/10 rounded-full text-[10px] font-bold text-brand-gray-300">{a.name}</span>
+                                                        <span key={i} className="px-2 py-0.5 bg-white/5 border border-white/10 rounded-full text-[10px] font-medium text-brand-gray-300">{a.name}</span>
                                                     ))}
                                                 </div>
                                             </div>
@@ -523,7 +566,7 @@ export default function TenantManagement({ user }) {
                                         >
                                             <div className="flex items-center gap-2">
                                                 <ArrowRightLeft className="w-4 h-4 text-brand-orange-500" />
-                                                <span className="text-sm font-black text-white">เปลี่ยนห้องพัก</span>
+                                                <span className="text-sm font-bold text-white">เปลี่ยนห้องพัก</span>
                                             </div>
                                             <ChevronDown className={`w-4 h-4 text-brand-gray-500 transition-transform duration-200 ${showTransfer ? 'rotate-180' : ''}`} />
                                         </button>
@@ -540,7 +583,7 @@ export default function TenantManagement({ user }) {
                                                                 <button
                                                                     key={r.roomNumber}
                                                                     onClick={() => setTransferRoom(r.roomNumber)}
-                                                                    className={`py-2 rounded-lg text-xs font-black transition-all border ${transferRoom === r.roomNumber
+                                                                    className={`py-2 rounded-lg text-xs font-semibold transition-all border ${transferRoom === r.roomNumber
                                                                         ? 'bg-brand-orange-500 border-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/20'
                                                                         : 'bg-white/5 border-white/10 text-brand-gray-300 hover:border-white/20 hover:text-white'
                                                                         }`}
@@ -552,7 +595,7 @@ export default function TenantManagement({ user }) {
                                                         <button
                                                             onClick={handleTransferRoom}
                                                             disabled={!transferRoom || transferSaving}
-                                                            className="w-full py-2.5 bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-40 text-brand-bg rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2"
+                                                            className="w-full py-2.5 bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-40 text-brand-bg rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
                                                         >
                                                             {transferSaving
                                                                 ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> กำลังย้าย...</>
@@ -569,7 +612,7 @@ export default function TenantManagement({ user }) {
                                     <div className="px-5 py-3">
                                         <div className="flex items-center gap-2 mb-3">
                                             <Banknote className="w-4 h-4 text-brand-orange-500" />
-                                            <h5 className="text-sm font-black text-white uppercase tracking-wide">ประวัติการชำระเงิน</h5>
+                                            <h5 className="text-sm font-bold text-white uppercase tracking-wide">ประวัติการชำระเงิน</h5>
                                         </div>
 
                                         {paymentsLoading ? (
@@ -763,13 +806,13 @@ export default function TenantManagement({ user }) {
                             <div className="w-full grid grid-cols-2 gap-2">
                                 <button
                                     onClick={handleDownload}
-                                    className="py-2.5 bg-brand-orange-500 hover:bg-brand-orange-400 text-brand-bg rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-brand-orange-500/20"
+                                    className="py-2.5 bg-brand-orange-500 hover:bg-brand-orange-400 text-brand-bg rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-brand-orange-500/20"
                                 >
                                     <Download className="w-3.5 h-3.5" /> ดาวน์โหลด
                                 </button>
                                 <button
                                     onClick={handlePrint}
-                                    className="py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2"
+                                    className="py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
                                 >
                                     <Printer className="w-3.5 h-3.5" /> ปริ้น
                                 </button>

@@ -20,13 +20,7 @@ export default function BuildingPicker({ user }) {
                 const results = await getUserApartments(db, user);
                 setBuildings(results);
 
-                // Auto-enter if only one building (skip picker)
-                if (results.length === 1) {
-                    localStorage.setItem('activeApartmentId', results[0].id);
-                    localStorage.setItem('selectedBuildingIds', JSON.stringify([results[0].id]));
-                    navigate('/dashboard', { replace: true });
-                    return;
-                }
+
             } catch (error) {
                 console.error("Error fetching buildings:", error);
             }

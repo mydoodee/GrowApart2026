@@ -257,6 +257,8 @@ export default function RoomManagement({ user }) {
             const dataToSave = {
                 ...selectedRoom,
                 status: normalizeStatus(selectedRoom.status),
+                waterMeter: parseFloat(selectedRoom.waterMeter) || 0,
+                electricityMeter: parseFloat(selectedRoom.electricityMeter) || 0,
                 updatedAt: serverTimestamp()
             };
             delete dataToSave.id;
@@ -327,7 +329,7 @@ export default function RoomManagement({ user }) {
                             <button
                                 key={f}
                                 onClick={() => setFilterFloor(f.toString())}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${filterFloor === f.toString()
+                                className={`px-4 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wider transition-all border ${filterFloor === f.toString()
                                     ? 'bg-brand-orange-500 border-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/25'
                                     : 'bg-brand-bg/40 border-white/5 text-brand-gray-400 hover:text-white hover:bg-white/10'
                                     }`}
@@ -338,16 +340,16 @@ export default function RoomManagement({ user }) {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                         <div className="bg-brand-orange-500/10 px-4 py-2 rounded-xl border border-brand-orange-500/20 flex items-center gap-2 h-10">
-                            <p className="text-[9px] font-black text-brand-orange-500 uppercase tracking-widest opacity-80">ห้อง</p>
-                            <p className="text-base font-black text-white leading-none">{totalRooms}</p>
+                            <p className="text-[9px] font-medium text-brand-orange-500 uppercase tracking-widest opacity-80">ห้อง</p>
+                            <p className="text-base font-bold text-white leading-none">{totalRooms}</p>
                         </div>
                         <div className="bg-blue-500/10 px-4 py-2 rounded-xl border border-blue-500/20 flex items-center gap-2 h-10">
-                            <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest opacity-80">ไม่ว่าง</p>
-                            <p className="text-base font-black text-white leading-none">{occupiedCount}</p>
+                            <p className="text-[9px] font-medium text-blue-500 uppercase tracking-widest opacity-80">ไม่ว่าง</p>
+                            <p className="text-base font-bold text-white leading-none">{occupiedCount}</p>
                         </div>
                         <div className="bg-emerald-500/10 px-4 py-2 rounded-xl border border-emerald-500/20 flex items-center gap-2 h-10">
-                            <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest opacity-80">ว่าง</p>
-                            <p className="text-base font-black text-white leading-none">{vacantCount}</p>
+                            <p className="text-[9px] font-medium text-emerald-500 uppercase tracking-widest opacity-80">ว่าง</p>
+                            <p className="text-base font-bold text-white leading-none">{vacantCount}</p>
                         </div>
                     </div>
                 </div>
@@ -401,8 +403,8 @@ export default function RoomManagement({ user }) {
 
                                             {/* room + floor */}
                                             <div className="flex items-center justify-between">
-                                                <span className={`text-[9px] font-bold uppercase ${isSelected ? 'text-brand-orange-400/70' : 'text-brand-gray-600'}`}>ชั้น {room.floor}</span>
-                                                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${isSelected ? 'bg-brand-orange-500 text-brand-bg' : 'bg-brand-orange-500/10 text-brand-orange-400'}`}>
+                                                <span className={`text-[9px] font-medium uppercase ${isSelected ? 'text-brand-orange-400/70' : 'text-brand-gray-600'}`}>ชั้น {room.floor}</span>
+                                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${isSelected ? 'bg-brand-orange-500 text-brand-bg' : 'bg-brand-orange-500/10 text-brand-orange-400'}`}>
                                                     {room.roomNumber}
                                                 </span>
                                             </div>
@@ -414,11 +416,11 @@ export default function RoomManagement({ user }) {
                                                 </div>
                                                 <div className="min-w-0">
                                                     {room.price ? (
-                                                        <p className={`font-bold text-xs leading-tight truncate ${isSelected ? 'text-brand-orange-300' : 'text-white'}`}>
+                                                        <p className={`font-medium text-xs leading-tight truncate ${isSelected ? 'text-brand-orange-300' : 'text-white'}`}>
                                                             {room.price?.toLocaleString()} บ./เดือน
                                                         </p>
                                                     ) : (
-                                                        <p className="font-bold text-xs text-brand-gray-600">ยังไม่ตั้งราคา</p>
+                                                        <p className="font-medium text-xs text-brand-gray-600">ยังไม่ตั้งราคา</p>
                                                     )}
                                                 </div>
                                             </div>
@@ -427,7 +429,7 @@ export default function RoomManagement({ user }) {
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-1">
                                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
-                                                    <span className={`text-[9px] font-bold ${style.text}`}>{style.label}</span>
+                                                    <span className={`text-[9px] font-medium ${style.text}`}>{style.label}</span>
                                                 </div>
                                                 {room.tenantName && (
                                                     <span className="text-[9px] text-brand-gray-500 truncate max-w-[60%]">{room.tenantName}</span>
@@ -459,11 +461,11 @@ export default function RoomManagement({ user }) {
                                             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap gap-y-1">
                                                 <div className="flex items-center gap-1">
                                                     <span className={`w-1.5 h-1.5 rounded-full ${getStatusStyle(selectedRoom.status).dot}`} />
-                                                    <span className={`text-[10px] font-bold uppercase ${getStatusStyle(selectedRoom.status).text}`}>
+                                                    <span className={`text-[10px] font-semibold uppercase ${getStatusStyle(selectedRoom.status).text}`}>
                                                         {normalizeStatus(selectedRoom.status)}
                                                     </span>
                                                 </div>
-                                                <span className="bg-brand-orange-500/15 border border-brand-orange-500/25 text-brand-orange-400 px-2 py-0.5 rounded-lg text-[10px] font-black">
+                                                <span className="bg-brand-orange-500/15 border border-brand-orange-500/25 text-brand-orange-400 px-2 py-0.5 rounded-lg text-[10px] font-semibold">
                                                     ชั้น {selectedRoom.floor}
                                                 </span>
                                             </div>
@@ -476,7 +478,7 @@ export default function RoomManagement({ user }) {
 
                                     {/* Status selector */}
                                     <div className="px-5 py-3 border-b border-white/8">
-                                        <p className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-wider mb-2">สถานะห้องพัก</p>
+                                        <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">สถานะห้องพัก</p>
                                         <div className="grid grid-cols-4 gap-1.5">
                                             {['ว่าง', 'ไม่ว่าง', 'แจ้งซ่อม', 'จอง'].map(st => {
                                                 const isActive = normalizeStatus(selectedRoom.status) === st;
@@ -485,7 +487,7 @@ export default function RoomManagement({ user }) {
                                                     <button
                                                         key={st}
                                                         onClick={() => setSelectedRoom({ ...selectedRoom, status: st })}
-                                                        className={`py-2 rounded-lg text-xs font-black transition-all border ${isActive
+                                                        className={`py-2 rounded-lg text-xs font-semibold transition-all border ${isActive
                                                             ? 'bg-brand-orange-500 border-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/20'
                                                             : 'bg-white/5 border-white/10 text-brand-gray-300 hover:border-white/20 hover:text-white'
                                                             }`}
@@ -499,7 +501,7 @@ export default function RoomManagement({ user }) {
 
                                     {/* Price */}
                                     <div className="px-5 py-3 border-b border-white/8">
-                                        <p className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-wider mb-2">ค่าเช่ารายเดือน</p>
+                                        <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">ค่าเช่ารายเดือน</p>
                                         <div className="relative">
                                             <input
                                                 type="number"
@@ -524,10 +526,45 @@ export default function RoomManagement({ user }) {
                                         )}
                                     </div>
 
+                                    {/* Meter Readings */}
+                                    <div className="px-5 py-3 border-b border-white/8">
+                                        <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">มิเตอร์ล่าสุด</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-bold text-brand-gray-500 uppercase flex items-center gap-1.5 ml-1">
+                                                    <Zap className="w-3 h-3 text-yellow-500" /> ไฟฟ้า
+                                                </label>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        value={selectedRoom.electricityMeter || 0}
+                                                        onChange={(e) => setSelectedRoom({ ...selectedRoom, electricityMeter: parseFloat(e.target.value) || 0 })}
+                                                        className="w-full bg-brand-bg rounded-xl px-3 py-2 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center text-sm"
+                                                        placeholder="0"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-bold text-brand-gray-500 uppercase flex items-center gap-1.5 ml-1">
+                                                    <Droplets className="w-3 h-3 text-blue-500" /> น้ำ
+                                                </label>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        value={selectedRoom.waterMeter || 0}
+                                                        onChange={(e) => setSelectedRoom({ ...selectedRoom, waterMeter: parseFloat(e.target.value) || 0 })}
+                                                        className="w-full bg-brand-bg rounded-xl px-3 py-2 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center text-sm"
+                                                        placeholder="0"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {/* Tenant info */}
                                     {selectedRoom.tenantId && (
                                         <div className="px-5 py-3 border-b border-white/8">
-                                            <p className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-wider mb-2">ผู้เช่า</p>
+                                            <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">ผู้เช่า</p>
                                             <button
                                                 onClick={() => navigate(`/tenants?tenantId=${selectedRoom.tenantId}`)}
                                                 className="w-full flex items-center gap-2 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/30 rounded-xl px-3 py-2.5 transition-all group text-left"
@@ -637,7 +674,7 @@ export default function RoomManagement({ user }) {
                                     <button
                                         onClick={handleSaveRoom}
                                         disabled={saving}
-                                        className="w-full py-2.5 bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-40 text-brand-bg rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-brand-orange-500/20"
+                                        className="w-full py-2.5 bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-40 text-brand-bg rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-brand-orange-500/20"
                                     >
                                         {saving
                                             ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> กำลังบันทึก...</>

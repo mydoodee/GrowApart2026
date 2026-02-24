@@ -118,14 +118,6 @@ export default function TenantDashboard({ user }) {
         // 3. Listen for maintenance requests
         let unsubscribeMaintenance = null;
         if (user?.uid) {
-            const maintQ = query(
-                collection(db, 'maintenance'),
-                where('tenantId', '==', user.uid),
-                where('apartmentId', 'in', Array.from(new Set(myRooms.map(r => r.apartmentId))).length > 0 ? Array.from(new Set(myRooms.map(r => r.apartmentId))) : ['placeholder'])
-            );
-
-            // Note: 'in' query with empty array will error, so we only subscribe if we have apartment IDs
-            // or we use a different approach. Better: subscribe to all user's maintenance regardless of apartment if they are tenants.
             const maintQSimple = query(
                 collection(db, 'maintenance'),
                 where('tenantId', '==', user.uid)
@@ -152,6 +144,36 @@ export default function TenantDashboard({ user }) {
     const handleLogout = async () => {
         await signOut(auth);
         navigate('/tenant-login', { replace: true });
+    };
+
+    const handleSubmitMaintenance = async () => {
+        if (!maintenanceForm.title.trim()) {
+            showToast('กรุณาระบุหัวข้อเรื่อง', 'error');
+            return;
+        }
+        if (myRooms.length === 0) {
+            showToast('ไม่พบข้อมูลห้องพัก', 'error');
+            return;
+        }
+        setSubmitting(true);
+        try {
+            const room = myRooms[0];
+            await addDoc(collection(db, 'maintenance'), {
+                ...maintenanceForm,
+                tenantId: user.uid,
+                tenantName: user.displayName || user.email,
+                roomNumber: room.roomNumber,
+                apartmentId: room.apartmentId,
+                status: 'pending',
+                createdAt: serverTimestamp()
+            });
+            setMaintenanceForm({ title: '', priority: 'ปกติ', description: '' });
+            showToast('แจ้งซ่อมเรียบร้อย', 'success');
+        } catch (e) {
+            console.error(e);
+            showToast('เกิดข้อผิดพลาด', 'error');
+        }
+        setSubmitting(false);
     };
 
     if (loading) {
@@ -196,11 +218,11 @@ export default function TenantDashboard({ user }) {
                         )}
                     </div>
                     <div>
-                        <h2 className="text-lg font-black text-white tracking-tight leading-none italic uppercase">
+                        <h2 className="text-base font-bold text-white tracking-tight leading-none">
                             {primaryApt?.general?.name || 'GrowApart'}
                         </h2>
-                        <p className="text-[10px] font-bold text-brand-gray-500 tracking-[0.2em] uppercase mt-1">
-                            {primaryApt?.general?.name ? 'OFFICIAL TENANT' : 'Management'}
+                        <p className="text-[10px] font-medium text-brand-gray-500 tracking-wider uppercase mt-0.5">
+                            {primaryApt?.general?.name ? 'ผู้เช่า' : 'Management'}
                         </p>
                     </div>
                 </div>
@@ -227,12 +249,12 @@ export default function TenantDashboard({ user }) {
                                 <div className="w-16 h-16 bg-brand-orange-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 text-brand-orange-500">
                                     {hasPendingRequest ? <Clock className="w-8 h-8 animate-pulse" /> : <AlertCircle className="w-8 h-8" />}
                                 </div>
-                                <h2 className="text-white font-bold text-xl mb-2">
+                                <h2 className="text-white font-semibold text-xl mb-2">
                                     {hasPendingRequest ? 'กำลังรอดำเนินการ' : 'ไม่พบข้อมูลห้องพัก'}
                                 </h2>
-                                <p className="text-brand-gray-500 text-xs font-bold leading-relaxed max-w-[240px] mx-auto">
+                                <p className="text-brand-gray-500 text-sm font-normal leading-relaxed max-w-[240px] mx-auto">
                                     {hasPendingRequest
-                                        ? 'คำขอร่วมหอพักของคุณส่งไปแล้ว กรุณารอเจ้าของหอพักตรวจสอบข้อมลูครับ'
+                                        ? 'คำขอร่วมหอพักของคุณส่งไปแล้ว กรุณารอเจ้าของหอพักตรวจสอบข้อมูลครับ'
                                         : 'อีเมลของคุณยังไม่ได้ถูกผูกเข้ากับห้องพักใดๆ กรุณาติดต่อเจ้าหน้าที่หอพักครับ'}
                                 </p>
                             </div>
@@ -253,8 +275,8 @@ export default function TenantDashboard({ user }) {
 
                                                 <div className="flex items-center justify-between mb-6 relative z-10">
                                                     <div className="flex flex-col">
-                                                        <p className="text-[10px] font-black text-brand-bg/60 uppercase tracking-widest leading-none mb-1">{apt?.general?.name || 'Apartment'}</p>
-                                                        <h4 className="text-xl font-black text-brand-bg italic uppercase tracking-tighter leading-none">Room {room.roomNumber}</h4>
+                                                        <p className="text-[10px] font-medium text-brand-bg/60 uppercase tracking-wider leading-none mb-1">{apt?.general?.name || 'Apartment'}</p>
+                                                        <h4 className="text-xl font-bold text-brand-bg uppercase tracking-tight leading-none">ห้อง {room.roomNumber}</h4>
                                                     </div>
                                                     <div className="bg-brand-bg/20 backdrop-blur-md w-10 h-10 rounded-xl flex items-center justify-center border border-white/10">
                                                         <Wallet className="w-5 h-5 text-brand-bg" />
@@ -262,12 +284,12 @@ export default function TenantDashboard({ user }) {
                                                 </div>
 
                                                 <div className="relative z-10 mb-6">
-                                                    <p className="text-[10px] font-black text-brand-bg/50 uppercase tracking-widest mb-1">ยอดประมาณการเดือนนี้</p>
+                                                    <p className="text-[10px] font-medium text-brand-bg/50 uppercase tracking-wider mb-1">ยอดประมาณการเดือนนี้</p>
                                                     <div className="flex items-baseline gap-2">
                                                         <h2 className="text-4xl font-black text-brand-bg tracking-tighter transition-all">
                                                             {totalEstimated.toLocaleString()}
                                                         </h2>
-                                                        <span className="text-sm font-black text-brand-bg/60 uppercase tracking-widest italic">THB</span>
+                                                        <span className="text-sm font-medium text-brand-bg/60 uppercase tracking-wider">THB</span>
                                                     </div>
                                                 </div>
 
@@ -280,7 +302,7 @@ export default function TenantDashboard({ user }) {
                                                             <MessageSquare className="w-4 h-4 text-brand-orange-500" />
                                                         </div>
                                                     </div>
-                                                    <button onClick={() => setActiveTab('bills')} className="bg-brand-bg text-brand-orange-500 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-90 transition-all">
+                                                    <button onClick={() => setActiveTab('bills')} className="bg-brand-bg text-brand-orange-500 px-5 py-2.5 rounded-2xl text-[10px] font-semibold uppercase tracking-wider shadow-xl active:scale-90 transition-all">
                                                         ชำระเงิน
                                                     </button>
                                                 </div>
@@ -289,33 +311,33 @@ export default function TenantDashboard({ user }) {
                                             {/* Detailed Info Cards */}
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="bg-brand-card/50 p-5 rounded-2xl border border-white/5 backdrop-blur-md">
-                                                    <div className="w-10 h-10 bg-yellow-500/10 rounded-2xl flex items-center justify-center text-yellow-500 mb-4">
+                                                    <div className="w-10 h-10 bg-yellow-500/10 rounded-2xl flex items-center justify-center text-yellow-500 mb-3">
                                                         <Zap size={20} />
                                                     </div>
-                                                    <p className="text-[10px] font-black text-brand-gray-500 uppercase tracking-widest mb-1">ค่าไฟฟ้า</p>
-                                                    <p className="text-lg font-black text-white">{apt?.utilityRates?.electricity || 0} <span className="text-[10px]">บ./หน่วย</span></p>
+                                                    <p className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-wider mb-1">ค่าไฟฟ้า</p>
+                                                    <p className="text-lg font-bold text-white">{apt?.utilityRates?.electricity || 0} <span className="text-xs font-normal text-brand-gray-400">บ./หน่วย</span></p>
                                                 </div>
                                                 <div className="bg-brand-card/50 p-5 rounded-2xl border border-white/5 backdrop-blur-md">
-                                                    <div className="w-10 h-10 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500 mb-4">
+                                                    <div className="w-10 h-10 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500 mb-3">
                                                         <Droplets size={20} />
                                                     </div>
-                                                    <p className="text-[10px] font-black text-brand-gray-500 uppercase tracking-widest mb-1">ค่าน้ำมินิ</p>
-                                                    <p className="text-lg font-black text-white">{apt?.utilityRates?.water || 0} <span className="text-[10px]">บ./หน่วย</span></p>
+                                                    <p className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-wider mb-1">ค่าน้ำ</p>
+                                                    <p className="text-lg font-bold text-white">{apt?.utilityRates?.water || 0} <span className="text-xs font-normal text-brand-gray-400">บ./หน่วย</span></p>
                                                 </div>
                                             </div>
 
 
                                             {/* Room Amenities Section */}
                                             {(room.amenities && room.amenities.some(a => a.status)) && (
-                                                <div className="space-y-4">
-                                                    <h3 className="text-[10px] font-black text-brand-gray-500 uppercase tracking-[0.2em] ml-2">สิ่งอำนวยความสะดวกในห้อง</h3>
+                                                <div className="space-y-3">
+                                                    <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-2">สิ่งอำนวยความสะดวกในห้อง</h3>
                                                     <div className="grid grid-cols-2 gap-3">
                                                         {room.amenities.filter(a => a.status).map((amenity, idx) => (
                                                             <div key={idx} className="bg-brand-card/20 p-4 rounded-2xl border border-white/5 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${idx * 50}ms` }}>
                                                                 <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center text-brand-orange-400">
                                                                     {AmenityIcons[amenity.name] || <CheckCircle2 size={18} />}
                                                                 </div>
-                                                                <p className="text-[11px] font-bold text-white/90">{amenity.name}</p>
+                                                                <p className="text-sm font-medium text-white/90">{amenity.name}</p>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -324,16 +346,16 @@ export default function TenantDashboard({ user }) {
 
                                             {/* Fixed Services */}
                                             <div className="space-y-3">
-                                                <h3 className="text-[10px] font-black text-brand-gray-500 uppercase tracking-[0.2em] ml-2">ค่าบริการคงที่</h3>
+                                                <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-2">ค่าบริการคงที่</h3>
                                                 <div className="space-y-2">
                                                     <div className="bg-brand-card/30 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
                                                         <div className="flex items-center gap-3">
                                                             <div className="w-8 h-8 bg-white/5 rounded-xl flex items-center justify-center text-brand-gray-400">
                                                                 <Building size={16} />
                                                             </div>
-                                                            <p className="text-xs font-bold text-white">ค่าเช่าห้องพัก</p>
+                                                            <p className="text-sm font-medium text-white">ค่าเช่าห้องพัก</p>
                                                         </div>
-                                                        <p className="text-sm font-black text-white">{(room.price || room.rentAmount || apt?.utilityRates?.baseRent || 0).toLocaleString()} <span className="text-[10px] text-brand-gray-400 opacity-50">฿</span></p>
+                                                        <p className="text-sm font-semibold text-white">{(room.price || room.rentAmount || apt?.utilityRates?.baseRent || 0).toLocaleString()} <span className="text-xs text-brand-gray-500">฿</span></p>
                                                     </div>
                                                     {room.fixedExpenses?.filter(e => e.active).map((expense, idx) => (
                                                         <div key={idx} className="bg-brand-card/30 p-4 rounded-2xl border border-white/5 flex items-center justify-between animate-in fade-in slide-in-from-left-2 duration-300" style={{ animationDelay: `${idx * 100}ms` }}>
@@ -341,9 +363,9 @@ export default function TenantDashboard({ user }) {
                                                                 <div className="w-8 h-8 bg-white/5 rounded-xl flex items-center justify-center text-brand-gray-400">
                                                                     <Activity size={16} />
                                                                 </div>
-                                                                <p className="text-xs font-bold text-white">{expense.name}</p>
+                                                                <p className="text-sm font-medium text-white">{expense.name}</p>
                                                             </div>
-                                                            <p className="text-sm font-black text-white">{expense.amount.toLocaleString()} <span className="text-[10px] text-brand-gray-400 opacity-50">฿</span></p>
+                                                            <p className="text-sm font-semibold text-white">{expense.amount.toLocaleString()} <span className="text-xs text-brand-gray-500">฿</span></p>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -360,8 +382,8 @@ export default function TenantDashboard({ user }) {
                     <div className="space-y-6 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h1 className="text-2xl font-black text-white leading-tight">บิลค่าเช่า</h1>
-                                <p className="text-brand-gray-500 font-bold text-[10px] uppercase tracking-widest mt-1">Billing & Payment history</p>
+                                <h1 className="text-2xl font-bold text-white leading-tight">บิลค่าเช่า</h1>
+                                <p className="text-brand-gray-500 font-medium text-xs uppercase tracking-wider mt-1">Billing & Payment history</p>
                             </div>
                             <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-500">
                                 <Wallet size={24} />
@@ -373,14 +395,14 @@ export default function TenantDashboard({ user }) {
                             <div className="w-20 h-20 bg-emerald-500/10 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 text-emerald-500/30">
                                 <Activity className="w-10 h-10" />
                             </div>
-                            <p className="text-white font-black text-xl mb-2 italic">ยังไม่มีใบแจ้งหนี้</p>
-                            <p className="text-brand-gray-500 text-xs font-bold leading-relaxed max-w-[240px] mx-auto">ยอดหนี้ของคุณจะปรากฏที่นี่ เมื่อเจ้าของหอพักสรุปยอดบิลประจำเดือนให้ครับ</p>
+                            <p className="text-white font-semibold text-xl mb-2">ยังไม่มีใบแจ้งหนี้</p>
+                            <p className="text-brand-gray-500 text-sm font-normal leading-relaxed max-w-[240px] mx-auto">ยอดหนี้ของคุณจะปรากฏที่นี่ เมื่อเจ้าของหอพักสรุปยอดบิลประจำเดือนให้ครับ</p>
                         </div>
 
                         <div className="space-y-4">
-                            <h3 className="text-[10px] font-black text-brand-gray-500 uppercase tracking-[0.2em] ml-2">ประวัติย้อนหลัง</h3>
+                            <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-2">ประวัติย้อนหลัง</h3>
                             <div className="bg-brand-card/20 p-8 rounded-2xl border border-dashed border-white/5 text-center">
-                                <p className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-widest">No history record</p>
+                                <p className="text-xs font-medium text-brand-gray-600 uppercase tracking-wider">No history record</p>
                             </div>
                         </div>
                     </div>
@@ -390,88 +412,88 @@ export default function TenantDashboard({ user }) {
                     <div className="space-y-6 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h1 className="text-2xl font-black text-white leading-tight">แจ้งซ่อมบำรุง</h1>
-                                <p className="text-brand-gray-500 font-bold text-[10px] uppercase tracking-widest mt-1">Maintenance Request System</p>
+                                <h1 className="text-2xl font-bold text-white leading-tight">แจ้งซ่อมบำรุง</h1>
+                                <p className="text-brand-gray-500 font-medium text-xs uppercase tracking-wider mt-1">Maintenance Request System</p>
                             </div>
                             <div className="w-12 h-12 bg-brand-orange-500/10 rounded-2xl flex items-center justify-center text-brand-orange-500">
                                 <Activity size={24} />
                             </div>
                         </div>
 
-                        <div className="bg-brand-card/80 p-8 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md">
-                            <div className="space-y-6">
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-brand-orange-500 uppercase tracking-widest ml-4">หัวข้อเรื่อง</label>
+                        <div className="bg-brand-card/80 p-6 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md">
+                            <div className="space-y-5">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium text-brand-orange-500 uppercase tracking-wider ml-1">หัวข้อเรื่อง</label>
                                     <input
                                         type="text"
                                         value={maintenanceForm.title}
                                         onChange={(e) => setMaintenanceForm({ ...maintenanceForm, title: e.target.value })}
                                         placeholder="เช่น ก๊อกน้ำรั่ว, ไฟดับ..."
-                                        className="w-full bg-brand-bg rounded-2xl px-6 py-4 border border-white/10 outline-none font-bold text-white placeholder:text-white/10 focus:border-brand-orange-500/50 transition-all text-sm"
+                                        className="w-full bg-brand-bg rounded-2xl px-5 py-3.5 border border-white/10 outline-none font-medium text-white placeholder:text-white/20 focus:border-brand-orange-500/50 transition-all text-sm"
                                     />
                                 </div>
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-brand-orange-500 uppercase tracking-widest ml-4">ระดับความสำคัญ</label>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium text-brand-orange-500 uppercase tracking-wider ml-1">ระดับความสำคัญ</label>
                                     <div className="flex gap-2">
                                         {['ปกติ', 'ด่วน', 'ฉุกเฉิน'].map(v => (
                                             <button
                                                 key={v}
                                                 onClick={() => setMaintenanceForm({ ...maintenanceForm, priority: v })}
-                                                className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${maintenanceForm.priority === v ? 'bg-brand-orange-500 text-brand-bg border-brand-orange-500 shadow-lg shadow-brand-orange-500/20' : 'bg-brand-bg/50 text-brand-gray-400 border-white/5 hover:border-white/10'}`}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-medium transition-all border ${maintenanceForm.priority === v ? 'bg-brand-orange-500 text-brand-bg border-brand-orange-500 shadow-lg shadow-brand-orange-500/20' : 'bg-brand-bg/50 text-brand-gray-400 border-white/5 hover:border-white/10'}`}
                                             >
                                                 {v}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-brand-orange-500 uppercase tracking-widest ml-4">รายละเอียด</label>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-medium text-brand-orange-500 uppercase tracking-wider ml-1">รายละเอียด</label>
                                     <textarea
                                         rows="3"
                                         value={maintenanceForm.description}
                                         onChange={(e) => setMaintenanceForm({ ...maintenanceForm, description: e.target.value })}
                                         placeholder="อธิบายปัญหาที่คุณพบ..."
-                                        className="w-full bg-brand-bg rounded-2xl px-6 py-5 border border-white/10 outline-none font-bold text-white placeholder:text-white/10 resize-none focus:border-brand-orange-500/50 transition-all text-sm"
+                                        className="w-full bg-brand-bg rounded-2xl px-5 py-4 border border-white/10 outline-none font-medium text-white placeholder:text-white/20 resize-none focus:border-brand-orange-500/50 transition-all text-sm"
                                     ></textarea>
                                 </div>
                                 <button
                                     onClick={handleSubmitMaintenance}
                                     disabled={submitting}
-                                    className="w-full py-5 bg-gradient-to-r from-brand-orange-500 to-orange-400 text-brand-bg rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-xl shadow-brand-orange-500/20 active:scale-95 transition-all disabled:opacity-50"
+                                    className="w-full py-4 bg-gradient-to-r from-brand-orange-500 to-orange-400 text-brand-bg rounded-2xl font-semibold uppercase tracking-wider text-sm shadow-xl shadow-brand-orange-500/20 active:scale-95 transition-all disabled:opacity-50"
                                 >
-                                    {submitting ? 'Sending Request...' : 'ยืนยันการแจ้งเรื่อง'}
+                                    {submitting ? 'กำลังส่ง...' : 'ยืนยันการแจ้งเรื่อง'}
                                 </button>
                             </div>
                         </div>
 
                         <div className="space-y-4">
-                            <h3 className="text-[10px] font-black text-brand-gray-500 uppercase tracking-[0.2em] ml-2">ประวัติรายการ</h3>
+                            <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-2">ประวัติรายการ</h3>
                             <div className="space-y-3 min-h-[200px]">
                                 {maintenanceRequests.length === 0 ? (
                                     <div className="bg-brand-card/30 border border-dashed border-white/5 rounded-2xl p-10 text-center">
-                                        <p className="text-brand-gray-600 font-bold text-xs">ไม่มีประวัติรายการ</p>
+                                        <p className="text-brand-gray-600 font-medium text-sm">ไม่มีประวัติรายการ</p>
                                     </div>
                                 ) : (
                                     maintenanceRequests.map((req, idx) => (
                                         <div key={req.id} className="bg-brand-card/50 p-5 rounded-2xl border border-white/10 relative overflow-hidden group animate-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${idx * 100}ms` }}>
                                             <div className="flex justify-between items-start mb-3">
                                                 <div>
-                                                    <h4 className="text-sm font-black text-white italic">{req.title}</h4>
-                                                    <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest mt-1">
-                                                        {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('th-TH') : 'Just now'}
+                                                    <h4 className="text-sm font-semibold text-white">{req.title}</h4>
+                                                    <p className="text-xs font-medium text-brand-gray-500 mt-0.5">
+                                                        {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('th-TH') : 'เพิ่งส่ง'}
                                                     </p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-tighter border ${req.status === 'pending' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/10' :
+                                                <span className={`text-[9px] font-medium px-2.5 py-1 rounded-full uppercase tracking-wide border ${req.status === 'pending' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/10' :
                                                     req.status === 'in-progress' ? 'bg-blue-500/10 text-blue-500 border-blue-500/10' :
                                                         'bg-emerald-500/10 text-emerald-500 border-emerald-500/10'
                                                     }`}>
-                                                    {req.status === 'pending' ? 'Pending' : req.status === 'in-progress' ? 'Repairing' : 'Completed'}
+                                                    {req.status === 'pending' ? 'รอดำเนินการ' : req.status === 'in-progress' ? 'กำลังซ่อม' : 'เสร็จสิ้น'}
                                                 </span>
                                             </div>
-                                            <p className="text-xs text-brand-gray-400 font-medium leading-relaxed mb-4 line-clamp-2">{req.description}</p>
+                                            <p className="text-sm text-brand-gray-400 font-normal leading-relaxed mb-4 line-clamp-2">{req.description}</p>
                                             <div className="bg-brand-bg/50 px-3 py-2 rounded-xl flex items-center justify-between border border-white/5">
-                                                <span className={`text-[9px] font-black uppercase ${req.priority === 'ปกติ' ? 'text-brand-gray-500' : req.priority === 'ด่วน' ? 'text-orange-400' : 'text-red-500'}`}>
-                                                    Priority: {req.priority}
+                                                <span className={`text-xs font-medium ${req.priority === 'ปกติ' ? 'text-brand-gray-500' : req.priority === 'ด่วน' ? 'text-orange-400' : 'text-red-500'}`}>
+                                                    ความสำคัญ: {req.priority}
                                                 </span>
                                                 <ArrowUpRight size={14} className="text-brand-gray-700" />
                                             </div>
@@ -487,23 +509,23 @@ export default function TenantDashboard({ user }) {
                     <div className="space-y-8 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
                         <div className="text-center pt-8">
                             <div className="w-28 h-28 bg-brand-card rounded-2xl border-2 border-brand-orange-500/20 p-1 mx-auto mb-6 relative">
-                                <div className="w-full h-full bg-brand-bg rounded-[1.5rem] flex items-center justify-center text-white font-black text-4xl overflow-hidden shadow-2xl uppercase">
+                                <div className="w-full h-full bg-brand-bg rounded-[1.5rem] flex items-center justify-center text-white font-bold text-4xl overflow-hidden shadow-2xl uppercase">
                                     {user?.photoURL ? <img src={user.photoURL} alt="" /> : (user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'U')}
                                 </div>
                                 <div className="absolute bottom-2 right-2 w-8 h-8 bg-emerald-500 rounded-full border-4 border-brand-bg flex items-center justify-center">
                                     <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
                                 </div>
                             </div>
-                            <h2 className="text-2xl font-black text-white italic">{user?.displayName || user?.email?.split('@')[0] || 'User'}</h2>
-                            <p className="text-xs font-bold text-brand-orange-500 uppercase tracking-[0.3em] mt-2 mb-4">Official Tenant</p>
+                            <h2 className="text-2xl font-bold text-white">{user?.displayName || user?.email?.split('@')[0] || 'User'}</h2>
+                            <p className="text-xs font-medium text-brand-orange-500 uppercase tracking-wider mt-1 mb-4">ผู้เช่า</p>
                             <div className="inline-flex items-center gap-2 bg-white/5 px-4 py-1.5 rounded-full border border-white/5">
                                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-                                <span className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest">{user?.email}</span>
+                                <span className="text-xs font-normal text-brand-gray-400">{user?.email}</span>
                             </div>
                         </div>
 
                         <div className="space-y-4">
-                            <h3 className="text-[10px] font-black text-brand-gray-500 uppercase tracking-[0.2em] ml-4">Account Settings</h3>
+                            <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-4">ตั้งค่าบัญชี</h3>
                             <div className="bg-brand-card/50 rounded-[1.5rem] border border-white/10 overflow-hidden divide-y divide-white/5">
                                 <button
                                     onClick={() => setIsEditModalOpen(true)}
@@ -514,8 +536,8 @@ export default function TenantDashboard({ user }) {
                                             <User size={18} />
                                         </div>
                                         <div className="text-left">
-                                            <p className="text-sm font-bold text-white">จัดการโปรไฟล์และความปลอดภัย</p>
-                                            <p className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-tighter">รูปโปรไฟล์ ชื่อ และรหัสผ่าน</p>
+                                            <p className="text-sm font-medium text-white">จัดการโปรไฟล์และความปลอดภัย</p>
+                                            <p className="text-xs font-normal text-brand-gray-500 mt-0.5">รูปโปรไฟล์ ชื่อ และรหัสผ่าน</p>
                                         </div>
                                     </div>
                                     <ChevronRight size={18} className="text-brand-gray-700" />
@@ -523,12 +545,11 @@ export default function TenantDashboard({ user }) {
                             </div>
                         </div>
 
-
                         <div className="pt-4">
-                            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-3 p-5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-[1.5rem] border border-red-500/10 transition-all font-black uppercase tracking-widest text-xs italic">
-                                <LogOut size={18} /> Logout Session
+                            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-3 p-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl border border-red-500/10 transition-all font-medium text-sm">
+                                <LogOut size={18} /> ออกจากระบบ
                             </button>
-                            <p className="text-center text-[9px] font-black text-brand-gray-700 uppercase tracking-widest mt-6 italic">GrowApart v1.0.2 Mobile UI</p>
+                            <p className="text-center text-[9px] font-normal text-brand-gray-700 uppercase tracking-widest mt-6">GrowApart v1.0.2</p>
                         </div>
                     </div>
                 )}
@@ -548,143 +569,16 @@ export default function TenantDashboard({ user }) {
                                 }`}>
                                 {item.icon}
                             </div>
-                            <span className={`text-[8px] font-black uppercase tracking-widest ${activeTab === item.id ? 'opacity-100' : 'opacity-40'}`}>
+                            <span className={`text-[9px] font-medium ${activeTab === item.id ? 'opacity-100 text-brand-orange-500' : 'opacity-40'}`}>
                                 {item.label}
                             </span>
                             {activeTab === item.id && (
-                                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-brand-orange-500 rounded-full shadow-glow"></div>
+                                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-brand-orange-500 rounded-full"></div>
                             )}
                         </button>
                     ))}
                 </div>
             </nav>
-
-            {/* Edit Profile Modal */}
-            {isEditModalOpen && (
-                <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-5 animate-in fade-in duration-300">
-                    <div className="absolute inset-0 bg-brand-bg/80 backdrop-blur-md" onClick={() => !submitting && setIsEditModalOpen(false)}></div>
-                    <div className="bg-brand-card w-full max-w-lg rounded-t-2xl sm:rounded-2xl border-t sm:border border-white/10 relative z-20 overflow-hidden animate-in slide-in-from-bottom-full duration-500">
-                        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
-                            <h3 className="text-lg font-black text-white italic">
-                                {editMode === 'profile' ? 'แก้ไขข้อมูลส่วนตัว' : 'เปลี่ยนรหัสผ่าน'}
-                            </h3>
-                            <button
-                                onClick={() => !submitting && setIsEditModalOpen(false)}
-                                className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-brand-gray-500"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        <div className="p-6 space-y-6">
-                            {editMode === 'profile' ? (
-                                <>
-                                    <div className="flex flex-col items-center">
-                                        <div className="relative group">
-                                            <div className="w-24 h-24 bg-brand-bg rounded-[1.5rem] border-2 border-brand-orange-500/20 overflow-hidden shadow-2xl">
-                                                {(imagePreview || user?.photoURL) ? (
-                                                    <img src={imagePreview || user.photoURL} alt="" className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <div className="w-full h-full flex items-center justify-center text-white font-black text-3xl uppercase">
-                                                        {user?.displayName?.charAt(0) || user?.email?.charAt(0)}
-                                                    </div>
-                                                )}
-                                                {uploadingImage && (
-                                                    <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center">
-                                                        <div className="w-6 h-6 border-2 border-brand-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <label className="absolute bottom-[-8px] right-[-8px] w-10 h-10 bg-brand-orange-500 rounded-2xl flex items-center justify-center text-brand-bg cursor-pointer shadow-lg shadow-brand-orange-500/30 hover:scale-110 active:scale-95 transition-all">
-                                                <Camera size={18} />
-                                                <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} disabled={submitting} />
-                                            </label>
-                                        </div>
-                                        <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest mt-4">คลิกรูปกล้องเพื่อเปลี่ยนรูปโปรไฟล์</p>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-brand-orange-500 uppercase tracking-widest ml-4">ชื่อที่ต้องการแสดง</label>
-                                        <input
-                                            type="text"
-                                            value={displayNameInput}
-                                            onChange={(e) => setDisplayNameInput(e.target.value)}
-                                            className="w-full bg-brand-bg rounded-2xl px-6 py-4 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all"
-                                            placeholder="กรอกชื่อของคุณ..."
-                                            disabled={submitting}
-                                        />
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="space-y-4">
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-brand-gray-500 uppercase tracking-widest ml-4">รหัสผ่านปัจจุบัน</label>
-                                            <input
-                                                type="password"
-                                                value={currentPassword}
-                                                onChange={(e) => setCurrentPassword(e.target.value)}
-                                                className="w-full bg-brand-bg rounded-2xl px-6 py-4 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all placeholder:text-white/5"
-                                                placeholder="••••••••"
-                                                disabled={submitting}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-brand-orange-500 uppercase tracking-widest ml-4">รหัสผ่านใหม่</label>
-                                            <input
-                                                type="password"
-                                                value={newPassword}
-                                                onChange={(e) => setNewPassword(e.target.value)}
-                                                className="w-full bg-brand-bg rounded-2xl px-6 py-4 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all placeholder:text-white/5"
-                                                placeholder="••••••••"
-                                                disabled={submitting}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-brand-gray-500 uppercase tracking-widest ml-4">ยืนยันรหัสผ่านใหม่</label>
-                                            <input
-                                                type="password"
-                                                value={confirmPassword}
-                                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                                className="w-full bg-brand-bg rounded-2xl px-6 py-4 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all placeholder:text-white/5"
-                                                placeholder="••••••••"
-                                                disabled={submitting}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="bg-brand-orange-500/5 p-4 rounded-2xl flex items-start gap-3 border border-brand-orange-500/10">
-                                        <ShieldCheck className="w-5 h-5 text-brand-orange-500 shrink-0" />
-                                        <p className="text-[10px] font-bold text-brand-gray-500 leading-relaxed uppercase tracking-tighter">
-                                            * การเปลี่ยนรหัสผ่านจำเป็นต้องมีการยืนยันตัวตนอีกครั้งโดยใช้รหัสผ่านปัจจุบันของคุณ
-                                        </p>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-
-                        <div className="p-6 bg-white/5 border-t border-white/5 flex gap-3 pb-12 sm:pb-6">
-                            <button
-                                onClick={() => setIsEditModalOpen(false)}
-                                disabled={submitting}
-                                className="flex-1 py-4 bg-brand-bg text-brand-gray-500 rounded-2xl font-black uppercase tracking-widest text-[10px] border border-white/5 hover:bg-white/5 transition-all"
-                            >
-                                ยกเลิก
-                            </button>
-                            <button
-                                onClick={editMode === 'profile' ? handleUpdateProfile : handleUpdatePassword}
-                                disabled={submitting}
-                                className="flex-[2] py-4 bg-gradient-to-r from-brand-orange-500 to-orange-600 text-brand-bg rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-brand-orange-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                                {submitting ? (
-                                    <div className="w-4 h-4 border-2 border-brand-bg border-t-transparent rounded-full animate-spin"></div>
-                                ) : (
-                                    'บันทึกข้อมูล'
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

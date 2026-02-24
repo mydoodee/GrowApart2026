@@ -83,6 +83,8 @@ export default function ApartmentSettings({ user }) {
     const [approvalRoom, setApprovalRoom] = useState(null);
     const [approvalExpenses, setApprovalExpenses] = useState([]);
     const [approvalAmenities, setApprovalAmenities] = useState([]);
+    const [approvalWaterMeter, setApprovalWaterMeter] = useState(0);
+    const [approvalElecMeter, setApprovalElecMeter] = useState(0);
 
     useEffect(() => {
         async function loadData() {
@@ -134,7 +136,8 @@ export default function ApartmentSettings({ user }) {
                                     roomNumber: roomNo,
                                     floor: floor.id,
                                     status: 'ว่าง',
-                                    apartmentId: currentId
+                                    apartmentId: currentId,
+                                    price: currentApt.utilityRates?.baseRent || 0
                                 });
                             }
                         });
@@ -369,6 +372,9 @@ export default function ApartmentSettings({ user }) {
                             tenantId: request.userId,
                             tenantName: request.userName,
                             status: 'ไม่ว่าง',
+                            price: selectedRoomObj.price || utilityRates.baseRent || 0,
+                            waterMeter: parseFloat(approvalWaterMeter) || 0,
+                            electricityMeter: parseFloat(approvalElecMeter) || 0,
                             fixedExpenses: approvalExpenses,
                             amenities: approvalAmenities,
                             updatedAt: serverTimestamp()
@@ -382,6 +388,9 @@ export default function ApartmentSettings({ user }) {
                         tenantId: request.userId,
                         tenantName: request.userName,
                         status: 'ไม่ว่าง',
+                        price: rooms.find(r => r.roomNumber === roomNumber)?.price || utilityRates.baseRent || 0,
+                        waterMeter: parseFloat(approvalWaterMeter) || 0,
+                        electricityMeter: parseFloat(approvalElecMeter) || 0,
                         fixedExpenses: approvalExpenses,
                         amenities: approvalAmenities,
                         updatedAt: serverTimestamp()
@@ -1389,8 +1398,10 @@ export default function ApartmentSettings({ user }) {
                                                                 const initialRoomNo = request.roomNumber || selectedRooms[request.id] || '';
                                                                 const initialRoom = rooms.find(r => r.roomNumber === initialRoomNo);
                                                                 setApprovalRoom(initialRoom || null);
-                                                                setApprovalExpenses(initialRoom?.fixedExpenses || fixedExpenses.map(fe => ({ ...fe, active: true })));
+                                                                setApprovalExpenses(initialRoom?.fixedExpenses || fixedExpenses.map(fe => ({ ...fe, active: fe.name !== 'ค่าจอดรถ' })));
                                                                 setApprovalAmenities(initialRoom?.amenities || amenities.map(am => ({ ...am, status: true })));
+                                                                setApprovalWaterMeter(initialRoom?.waterMeter || 0);
+                                                                setApprovalElecMeter(initialRoom?.electricityMeter || 0);
                                                                 setIsApproveModalOpen(true);
                                                             }
                                                         }}
@@ -1491,17 +1502,31 @@ export default function ApartmentSettings({ user }) {
                     <div className="relative bg-brand-card w-full max-w-lg rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-brand-orange-500/10 rounded-xl flex items-center justify-center">
+                                <div className="w-10 h-10 bg-brand-orange-500/10 rounded-xl flex items-center justify-center shrink-0">
                                     <ClipboardList className="w-5 h-5 text-brand-orange-500" />
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-bold text-white">อนุมัติการเข้าพัก</h3>
-                                    <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest">{requestToApprove.userName || requestToApprove.userEmail || requestToApprove.userPhone}</p>
+                                    <h3 className="text-base font-bold text-white leading-tight">อนุมัติการเข้าพัก</h3>
+                                    <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest truncate max-w-[180px]">{requestToApprove.userName || requestToApprove.userEmail || requestToApprove.userPhone}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsApproveModalOpen(false)} className="text-brand-gray-300 hover:text-white transition-colors">
-                                <X className="w-6 h-6" />
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {/* ยอดรวมเล็กๆ ที่หัว */}
+                                {approvalRoom && (
+                                    <div className="text-right">
+                                        <p className="text-[9px] font-bold text-brand-gray-500 uppercase tracking-widest">รวม/เดือน</p>
+                                        <p className="text-sm font-black text-brand-orange-500">
+                                            {(
+                                                (approvalRoom.price || utilityRates.baseRent || 0) +
+                                                approvalExpenses.filter(e => e.active).reduce((sum, e) => sum + e.amount, 0)
+                                            ).toLocaleString()} บ.
+                                        </p>
+                                    </div>
+                                )}
+                                <button onClick={() => setIsApproveModalOpen(false)} className="text-brand-gray-300 hover:text-white transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="p-6 space-y-5 h-[60vh] overflow-y-auto custom-scrollbar">
@@ -1514,8 +1539,14 @@ export default function ApartmentSettings({ user }) {
                                         const r = rooms.find(rm => rm.roomNumber === e.target.value);
                                         setApprovalRoom(r || null);
                                         if (r) {
-                                            setApprovalExpenses(r.fixedExpenses || fixedExpenses.map(fe => ({ ...fe, active: true })));
+                                            // ค่าบริการเริ่มต้น active: false ทั้งหมด ให้ user กดเปิดเอง
+                                            setApprovalExpenses(r.fixedExpenses
+                                                ? r.fixedExpenses.map(fe => ({ ...fe, active: false }))
+                                                : fixedExpenses.map(fe => ({ ...fe, active: false }))
+                                            );
                                             setApprovalAmenities(r.amenities || amenities.map(am => ({ ...am, status: true })));
+                                            setApprovalWaterMeter(r.waterMeter || 0);
+                                            setApprovalElecMeter(r.electricityMeter || 0);
                                         }
                                     }}
                                     className="w-full bg-brand-bg border border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-white outline-none focus:border-brand-orange-500/50 transition-all appearance-none text-center"
@@ -1550,6 +1581,34 @@ export default function ApartmentSettings({ user }) {
                                         <div className="flex items-center gap-2">
                                             <Droplets className="w-3 h-3 text-blue-500" />
                                             <span className="text-[10px] font-bold text-brand-gray-300 uppercase">ค่าน้ำ {utilityRates.water} บ.</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Initial Meters */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest block ml-1 flex items-center gap-1">
+                                                <Zap className="w-3 h-3 text-yellow-500" /> เลขมิเตอร์ไฟล่าสุด
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={approvalElecMeter}
+                                                onChange={(e) => setApprovalElecMeter(e.target.value)}
+                                                className="w-full bg-brand-bg rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center"
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest block ml-1 flex items-center gap-1">
+                                                <Droplets className="w-3 h-3 text-blue-500" /> เลขมิเตอร์น้ำล่าสุด
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={approvalWaterMeter}
+                                                onChange={(e) => setApprovalWaterMeter(e.target.value)}
+                                                className="w-full bg-brand-bg rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center"
+                                                placeholder="0"
+                                            />
                                         </div>
                                     </div>
 
@@ -1625,16 +1684,35 @@ export default function ApartmentSettings({ user }) {
                                     )}
 
                                     {/* Total Estimation */}
-                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10 flex justify-between items-center">
-                                        <div>
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                                        <div className="flex justify-between items-center mb-3">
                                             <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest">ยอดรวมรายเดือนประมาณการ</p>
                                             <p className="text-[9px] text-brand-gray-500 italic">(ไม่รวมค่าน้ำ-ไฟตามจริง)</p>
                                         </div>
-                                        <div className="text-right">
-                                            <p className="text-2xl font-black text-brand-orange-500">
-                                                {((approvalRoom.price || utilityRates.baseRent || 0) + approvalExpenses.filter(e => e.active).reduce((sum, e) => sum + e.amount, 0)).toLocaleString()}
-                                                <span className="text-xs font-bold ml-1.5 uppercase">บาท</span>
-                                            </p>
+                                        {/* ค่าเช่าห้อง */}
+                                        <div className="flex justify-between items-center py-1.5">
+                                            <span className="text-xs text-brand-gray-400">ค่าเช่าห้อง</span>
+                                            <span className="text-sm font-bold text-white">{(approvalRoom.price || utilityRates.baseRent || 0).toLocaleString()} บ.</span>
+                                        </div>
+                                        {/* ค่าบริการที่เปิดแล้ว */}
+                                        {approvalExpenses.filter(e => e.active).map((e, i) => (
+                                            <div key={i} className="flex justify-between items-center py-1">
+                                                <span className="text-xs text-brand-gray-500">{e.name}</span>
+                                                <span className="text-xs font-bold text-brand-orange-400">{e.amount.toLocaleString()} บ.</span>
+                                            </div>
+                                        ))}
+                                        <div className="border-t border-white/10 mt-2 pt-2 flex justify-between items-center">
+                                            <span className="text-xs font-bold text-brand-gray-400 uppercase">รวม</span>
+                                            <div className="text-right">
+                                                <p className="text-2xl font-black text-brand-orange-500">
+                                                    {((approvalRoom.price || utilityRates.baseRent || 0) +
+                                                        approvalExpenses
+                                                            .filter(e => e.active)
+                                                            .reduce((sum, e) => sum + e.amount, 0)
+                                                    ).toLocaleString()}
+                                                    <span className="text-xs font-bold ml-1.5 uppercase">บาท</span>
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
                                 </>
@@ -1655,7 +1733,8 @@ export default function ApartmentSettings({ user }) {
                         </div>
                     </div>
                 </div>
-            )}
-        </MainLayout>
+            )
+            }
+        </MainLayout >
     );
 }

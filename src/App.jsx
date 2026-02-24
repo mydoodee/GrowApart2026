@@ -14,8 +14,10 @@ import TenantDashboard from './pages/TenantDashboard';
 import TenantJoin from './pages/TenantJoin';
 import StaffJoin from './pages/StaffJoin';
 import TenantManagement from './pages/TenantManagement';
+import TenantHistory from './pages/TenantHistory';
 import TenantJoinGeneral from './pages/TenantJoinGeneral';
 import TenantLogin from './pages/TenantLogin';
+import MeterCollection from './pages/MeterCollection';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ user, userRole, allowedRoles, children }) => {
@@ -153,6 +155,18 @@ function App() {
         <Route path="/tenants" element={
           <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
             <TenantManagement user={user} />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/tenant-history" element={
+          <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
+            <TenantHistory user={user} />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/meters" element={
+          <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
+            <MeterCollection user={user} />
           </ProtectedRoute>
         } />
 
