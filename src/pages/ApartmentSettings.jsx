@@ -10,7 +10,8 @@ import { sendPasswordResetEmail } from 'firebase/auth';
 import {
     Save, Layers, CheckCircle2,
     Plus, Trash2, MapPin, Info, LayoutGrid, ClipboardList, Check, Phone, QrCode, User, CreditCard, Building,
-    Zap, Droplets, PlusSquare, X, MessageSquare, Loader2, Link as LinkIcon, Search, ChevronDown
+    Zap, Droplets, PlusSquare, X, MessageSquare, Loader2, Link as LinkIcon, Search, ChevronDown,
+    FileText, UploadCloud, ExternalLink
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Toast, { useToast } from '../components/Toast';
@@ -67,7 +68,8 @@ export default function ApartmentSettings({ user }) {
     const [utilityRates, setUtilityRates] = useState({
         electricity: 7, // Baht per unit
         water: 18,      // Baht per unit
-        baseRent: 0     // Monthly rent
+        baseRent: 0,    // Monthly rent
+        roomDeposit: 0   // Room deposit
     });
     const [fixedExpenses, setFixedExpenses] = useState([
         { name: 'ค่าจอดรถ', amount: 0 },
@@ -85,6 +87,8 @@ export default function ApartmentSettings({ user }) {
     const [approvalAmenities, setApprovalAmenities] = useState([]);
     const [approvalWaterMeter, setApprovalWaterMeter] = useState(0);
     const [approvalElecMeter, setApprovalElecMeter] = useState(0);
+    const [contractInfo, setContractInfo] = useState({ pdfURL: '', template: '' });
+    const [uploadingContract, setUploadingContract] = useState(false);
 
     useEffect(() => {
         async function loadData() {
@@ -114,11 +118,12 @@ export default function ApartmentSettings({ user }) {
                     setFloors(currentApt.floors || [{ id: 1, roomCount: 5 }]);
                     setAmenities(currentApt.amenities || amenities);
                     setManagers(currentApt.managers || []);
-                    setUtilityRates(currentApt.utilityRates || { electricity: 7, water: 18, baseRent: 0 });
+                    setUtilityRates(currentApt.utilityRates || { electricity: 7, water: 18, baseRent: 0, roomDeposit: 0 });
                     setFixedExpenses(currentApt.fixedExpenses || [
                         { name: 'ค่าจอดรถ', amount: 0 },
                         { name: 'WiFi', amount: 0 }
                     ]);
+                    setContractInfo(currentApt.contractInfo || { pdfURL: '', template: '' });
 
                     // Fetch rooms
                     const roomsQ = query(collection(db, 'rooms'), where('apartmentId', '==', currentId));
@@ -295,6 +300,7 @@ export default function ApartmentSettings({ user }) {
                 managers,
                 utilityRates,
                 fixedExpenses,
+                contractInfo,
                 updatedAt: serverTimestamp()
             };
 
@@ -491,6 +497,35 @@ export default function ApartmentSettings({ user }) {
         }
     };
 
+    const handleContractPDFUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.type !== 'application/pdf') {
+            showToast('กรุณาเลือกไฟล์ PDF เท่านั้น', 'error');
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('ขนาดไฟล์ต้องไม่เกิน 5MB', 'error');
+            return;
+        }
+
+        setUploadingContract(true);
+        try {
+            const storageRef = ref(storage2, `contracts/${activeAptId}/${Date.now()}_${file.name}`);
+            const snapshot = await uploadBytes(storageRef, file);
+            const downloadURL = await getDownloadURL(snapshot.ref);
+            setContractInfo(prev => ({ ...prev, pdfURL: downloadURL }));
+            showToast('อัปโหลดไฟล์สัญญาเรียบร้อย', 'success');
+        } catch (error) {
+            console.error('Error uploading contract:', error);
+            showToast('อัปโหลดไฟล์สัญญาล้มเหลว', 'error');
+        } finally {
+            setUploadingContract(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-brand-bg">
@@ -532,6 +567,7 @@ export default function ApartmentSettings({ user }) {
                             { id: 'rooms', icon: <Layers className="w-3.5 h-3.5 mr-1.5" />, label: 'ห้องพัก' },
                             { id: 'amenities', icon: <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />, label: 'แม่แบบ' },
                             { id: 'expenses', icon: <CreditCard className="w-3.5 h-3.5 mr-1.5" />, label: 'ค่าใช้จ่าย' },
+                            { id: 'contract', icon: <FileText className="w-3.5 h-3.5 mr-1.5" />, label: 'สัญญา' },
                         ].map(t => (
                             <button
                                 key={t.id}
@@ -819,19 +855,37 @@ export default function ApartmentSettings({ user }) {
                                                 <p className="text-brand-gray-300 text-[11px] font-medium">กำหนดค่าเช่าเริ่มต้นต่อเดือนสำหรับทุกห้อง</p>
                                             </div>
                                         </div>
-                                        <div className="bg-brand-card/30 border border-white/5 p-4 rounded-2xl group hover:border-brand-orange-500/30 transition-all">
-                                            <div className="flex items-center justify-between mb-3">
-                                                <span className="text-[11px] font-black text-brand-gray-400 uppercase tracking-widest">ค่าเช่ารายเดือน (บาท)</span>
-                                                <Building className="w-3.5 h-3.5 text-brand-orange-500" />
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div className="bg-brand-card/30 border border-white/5 p-4 rounded-2xl group hover:border-brand-orange-500/30 transition-all">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[11px] font-black text-brand-gray-400 uppercase tracking-widest">ค่าเช่รายเดือน (บาท)</span>
+                                                    <Building className="w-3.5 h-3.5 text-brand-orange-500" />
+                                                </div>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        value={utilityRates.baseRent || ''}
+                                                        onChange={(e) => setUtilityRates({ ...utilityRates, baseRent: parseFloat(e.target.value) || 0 })}
+                                                        className="w-full bg-brand-bg/50 rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-lg text-center font-mono"
+                                                        placeholder="0"
+                                                    />
+                                                </div>
                                             </div>
-                                            <div className="relative">
-                                                <input
-                                                    type="number"
-                                                    value={utilityRates.baseRent || ''}
-                                                    onChange={(e) => setUtilityRates({ ...utilityRates, baseRent: parseFloat(e.target.value) || 0 })}
-                                                    className="w-full bg-brand-bg/50 rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-lg text-center font-mono"
-                                                    placeholder="0"
-                                                />
+
+                                            <div className="bg-brand-card/30 border border-white/5 p-4 rounded-2xl group hover:border-brand-orange-500/30 transition-all">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[11px] font-black text-brand-gray-400 uppercase tracking-widest">ค่ามัดจำห้อง (บาท)</span>
+                                                    <CreditCard className="w-3.5 h-3.5 text-brand-orange-500" />
+                                                </div>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        value={utilityRates.roomDeposit || ''}
+                                                        onChange={(e) => setUtilityRates({ ...utilityRates, roomDeposit: parseFloat(e.target.value) || 0 })}
+                                                        className="w-full bg-brand-bg/50 rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-lg text-center font-mono"
+                                                        placeholder="0"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -961,6 +1015,97 @@ export default function ApartmentSettings({ user }) {
                                                     เพิ่ม
                                                 </button>
                                             </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'contract' && (
+                                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <div className="flex items-center space-x-3 mb-2">
+                                        <div className="w-10 h-10 bg-brand-orange-500/10 rounded-xl flex items-center justify-center">
+                                            <FileText className="w-5 h-5 text-brand-orange-500" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xl font-bold text-white uppercase tracking-tight">การจัดการสัญญา</h3>
+                                            <p className="text-brand-gray-400 text-xs font-medium mt-1">ตั้งค่าไฟล์สัญญาและร่างข้อความสัญญามาตรฐาน</p>
+                                        </div>
+                                    </div>
+
+                                    {/* PDF Upload Section */}
+                                    <div className="bg-brand-card/30 border border-white/10 rounded-2xl p-6">
+                                        <h4 className="text-sm font-bold text-white mb-4 flex items-center">
+                                            <UploadCloud className="w-4 h-4 mr-2 text-brand-orange-500" />
+                                            ไฟล์สัญญา (PDF)
+                                        </h4>
+                                        <div className="flex flex-col md:flex-row items-center gap-6">
+                                            <div className="flex-1 w-full">
+                                                <div className="bg-brand-bg/50 border-2 border-dashed border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all hover:border-brand-orange-500/30 group relative overflow-hidden">
+                                                    {contractInfo.pdfURL ? (
+                                                        <>
+                                                            <div className="w-16 h-16 bg-brand-orange-500/20 rounded-2xl flex items-center justify-center mb-4 text-brand-orange-500">
+                                                                <FileText size={32} />
+                                                            </div>
+                                                            <p className="text-white font-bold text-sm mb-1 uppercase tracking-tight">มีไฟล์สัญญาอยู่ในระบบแล้ว</p>
+                                                            <div className="flex gap-3 mt-4">
+                                                                <a
+                                                                    href={contractInfo.pdfURL}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-bold transition-all"
+                                                                >
+                                                                    <ExternalLink size={14} className="mr-2" />
+                                                                    ดูไฟล์ปัจจุบัน
+                                                                </a>
+                                                                <label className="flex items-center px-4 py-2 bg-brand-orange-500 text-brand-bg rounded-xl text-xs font-bold hover:bg-brand-orange-400 transition-all cursor-pointer">
+                                                                    <UploadCloud size={14} className="mr-2" />
+                                                                    {uploadingContract ? 'กำลังอัปโหลด...' : 'อัปโหลดใหม่'}
+                                                                    <input type="file" className="hidden" accept=".pdf" onChange={handleContractPDFUpload} disabled={uploadingContract} />
+                                                                </label>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-4 text-brand-gray-600 group-hover:text-brand-orange-500 transition-all">
+                                                                <UploadCloud size={32} />
+                                                            </div>
+                                                            <p className="text-brand-gray-400 font-bold text-sm mb-1 uppercase tracking-tight">ยังไม่ได้อัปโหลดไฟล์สัญญา</p>
+                                                            <p className="text-[10px] text-brand-gray-500 font-medium mb-4 uppercase tracking-widest">ขนาดไฟล์ไม่เกิน 5MB (เฉพาะ .PDF)</p>
+                                                            <label className="flex items-center px-6 py-2.5 bg-brand-orange-500 text-brand-bg rounded-xl text-xs font-bold hover:bg-brand-orange-400 transition-all cursor-pointer shadow-lg shadow-brand-orange-500/20">
+                                                                {uploadingContract ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                                                                {uploadingContract ? 'กำลังอัปโหลด...' : 'เลือกไฟล์เพื่ออัปโหลด'}
+                                                                <input type="file" className="hidden" accept=".pdf" onChange={handleContractPDFUpload} disabled={uploadingContract} />
+                                                            </label>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Template Section */}
+                                    <div className="bg-brand-card/30 border border-white/10 rounded-2xl p-6">
+                                        <h4 className="text-sm font-bold text-white mb-4 flex items-center uppercase tracking-tight">
+                                            <FileText className="w-4 h-4 mr-2 text-brand-orange-500" />
+                                            ร่างข้อความสัญญา (Template)
+                                        </h4>
+                                        <div className="relative">
+                                            <textarea
+                                                value={contractInfo.template}
+                                                onChange={(e) => setContractInfo(prev => ({ ...prev, template: e.target.value }))}
+                                                rows="12"
+                                                className="w-full bg-brand-bg/50 rounded-2xl p-6 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all resize-none text-sm placeholder:text-white/5 leading-relaxed"
+                                                placeholder="เขียนระเบียบการ หรือข้อตกลงเบื้องต้นของหอพักที่นี่..."
+                                            ></textarea>
+                                            <div className="absolute top-4 right-4 text-[10px] font-black text-brand-gray-600 uppercase tracking-widest pointer-events-none">
+                                                Contract Draft
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 flex items-start gap-3 bg-brand-orange-500/5 border border-brand-orange-500/10 rounded-xl p-4">
+                                            <Info className="w-4 h-4 text-brand-orange-500 mt-0.5 shrink-0" />
+                                            <p className="text-[11px] text-brand-gray-400 font-medium leading-relaxed">
+                                                ข้อความนี้จะแสดงให้ผู้เช่าเห็นในหน้าลงทะเบียนหรือหน้าจัดการห้องพัก เพื่อให้รับทราบเงื่อนไขเบื้องต้นก่อนเข้าพัก
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
