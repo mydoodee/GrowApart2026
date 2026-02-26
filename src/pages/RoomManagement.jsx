@@ -373,7 +373,7 @@ export default function RoomManagement({ user }) {
                 <div className="flex gap-4 items-start">
 
                     {/* ── Card grid ─────────────────────────────────── */}
-                    <div className={`transition-all duration-300 ${selectedRoom ? 'w-1/2 lg:w-[58%]' : 'w-full'}`}>
+                    <div className={`transition-all duration-300 w-full ${selectedRoom ? 'md:w-1/2 lg:w-[58%]' : ''}`}>
                         {filteredRooms.length === 0 ? (
                             <div className="text-center py-20 bg-brand-card/50 rounded-3xl border border-dashed border-white/10">
                                 <LayoutGrid className="w-10 h-10 text-brand-gray-700 mx-auto mb-3" />
@@ -444,246 +444,257 @@ export default function RoomManagement({ user }) {
 
                     {/* ── Detail Panel ──────────────────────────────── */}
                     {selectedRoom && (
-                        <div className="w-1/2 lg:w-[42%] sticky top-20 animate-in slide-in-from-right-4 fade-in duration-300">
-                            <div className="bg-brand-card border border-white/10 rounded-2xl overflow-hidden shadow-2xl max-h-[calc(100vh-120px)] flex flex-col">
+                        <>
+                            {/* Mobile: full-screen overlay backdrop */}
+                            <div className="fixed inset-0 z-[100] md:hidden" onClick={() => setSelectedRoom(null)}>
+                                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+                            </div>
+                            <div className="fixed inset-x-0 bottom-0 z-[101] md:relative md:inset-auto md:z-auto md:w-1/2 lg:w-[42%] md:sticky md:top-20 animate-in slide-in-from-bottom-4 md:slide-in-from-right-4 fade-in duration-300">
+                                <div className="bg-brand-card border border-white/10 rounded-t-3xl md:rounded-2xl overflow-hidden shadow-2xl max-h-[85vh] md:max-h-[calc(100vh-120px)] flex flex-col">
 
-                                {/* header */}
-                                <div className="relative px-5 pt-4 pb-3 border-b border-white/8 shrink-0">
-                                    <button onClick={() => setSelectedRoom(null)} className="absolute top-3 right-3 w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
-                                        <X className="w-3.5 h-3.5 text-brand-gray-400" />
-                                    </button>
-                                    <div className="flex items-center gap-3 pr-8">
-                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${normalizeStatus(selectedRoom.status) === 'ว่าง' ? 'bg-emerald-500/10' : 'bg-blue-500/10'}`}>
-                                            <Home className={`w-6 h-6 ${normalizeStatus(selectedRoom.status) === 'ว่าง' ? 'text-emerald-400' : 'text-blue-400'}`} />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <h4 className="text-white font-bold text-sm leading-tight">ห้อง {selectedRoom.roomNumber}</h4>
-                                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap gap-y-1">
-                                                <div className="flex items-center gap-1">
-                                                    <span className={`w-1.5 h-1.5 rounded-full ${getStatusStyle(selectedRoom.status).dot}`} />
-                                                    <span className={`text-[10px] font-semibold uppercase ${getStatusStyle(selectedRoom.status).text}`}>
-                                                        {normalizeStatus(selectedRoom.status)}
+                                    {/* Mobile drag handle */}
+                                    <div className="md:hidden flex justify-center pt-3 pb-1 shrink-0">
+                                        <div className="w-10 h-1 bg-white/20 rounded-full" />
+                                    </div>
+
+                                    {/* header */}
+                                    <div className="relative px-5 pt-4 md:pt-4 pb-3 border-b border-white/8 shrink-0">
+                                        <button onClick={() => setSelectedRoom(null)} className="absolute top-3 right-3 w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
+                                            <X className="w-3.5 h-3.5 text-brand-gray-400" />
+                                        </button>
+                                        <div className="flex items-center gap-3 pr-8">
+                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${normalizeStatus(selectedRoom.status) === 'ว่าง' ? 'bg-emerald-500/10' : 'bg-blue-500/10'}`}>
+                                                <Home className={`w-6 h-6 ${normalizeStatus(selectedRoom.status) === 'ว่าง' ? 'text-emerald-400' : 'text-blue-400'}`} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h4 className="text-white font-bold text-sm leading-tight">ห้อง {selectedRoom.roomNumber}</h4>
+                                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap gap-y-1">
+                                                    <div className="flex items-center gap-1">
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${getStatusStyle(selectedRoom.status).dot}`} />
+                                                        <span className={`text-[10px] font-semibold uppercase ${getStatusStyle(selectedRoom.status).text}`}>
+                                                            {normalizeStatus(selectedRoom.status)}
+                                                        </span>
+                                                    </div>
+                                                    <span className="bg-brand-orange-500/15 border border-brand-orange-500/25 text-brand-orange-400 px-2 py-0.5 rounded-lg text-[10px] font-semibold">
+                                                        ชั้น {selectedRoom.floor}
                                                     </span>
                                                 </div>
-                                                <span className="bg-brand-orange-500/15 border border-brand-orange-500/25 text-brand-orange-400 px-2 py-0.5 rounded-lg text-[10px] font-semibold">
-                                                    ชั้น {selectedRoom.floor}
-                                                </span>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* scrollable */}
-                                <div className="overflow-y-auto custom-scrollbar flex-1">
+                                    {/* scrollable */}
+                                    <div className="overflow-y-auto custom-scrollbar flex-1">
 
-                                    {/* Status selector */}
-                                    <div className="px-5 py-3 border-b border-white/8">
-                                        <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">สถานะห้องพัก</p>
-                                        <div className="grid grid-cols-4 gap-1.5">
-                                            {['ว่าง', 'ไม่ว่าง', 'แจ้งซ่อม', 'จอง'].map(st => {
-                                                const isActive = normalizeStatus(selectedRoom.status) === st;
-                                                const stStyle = STATUS_COLORS[st];
-                                                return (
-                                                    <button
-                                                        key={st}
-                                                        onClick={() => setSelectedRoom({ ...selectedRoom, status: st })}
-                                                        className={`py-2 rounded-lg text-xs font-semibold transition-all border ${isActive
-                                                            ? 'bg-brand-orange-500 border-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/20'
-                                                            : 'bg-white/5 border-white/10 text-brand-gray-300 hover:border-white/20 hover:text-white'
-                                                            }`}
-                                                    >
-                                                        {st}
-                                                    </button>
-                                                );
-                                            })}
+                                        {/* Status selector */}
+                                        <div className="px-5 py-3 border-b border-white/8">
+                                            <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">สถานะห้องพัก</p>
+                                            <div className="grid grid-cols-4 gap-1.5">
+                                                {['ว่าง', 'ไม่ว่าง', 'แจ้งซ่อม', 'จอง'].map(st => {
+                                                    const isActive = normalizeStatus(selectedRoom.status) === st;
+                                                    const stStyle = STATUS_COLORS[st];
+                                                    return (
+                                                        <button
+                                                            key={st}
+                                                            onClick={() => setSelectedRoom({ ...selectedRoom, status: st })}
+                                                            className={`py-2 rounded-lg text-xs font-semibold transition-all border ${isActive
+                                                                ? 'bg-brand-orange-500 border-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/20'
+                                                                : 'bg-white/5 border-white/10 text-brand-gray-300 hover:border-white/20 hover:text-white'
+                                                                }`}
+                                                        >
+                                                            {st}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    {/* Price */}
-                                    <div className="px-5 py-3 border-b border-white/8">
-                                        <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">ค่าเช่ารายเดือน</p>
-                                        <div className="relative">
-                                            <input
-                                                type="number"
-                                                value={selectedRoom.price || ''}
-                                                onChange={(e) => setSelectedRoom({ ...selectedRoom, price: parseInt(e.target.value) || 0 })}
-                                                className="w-full bg-brand-bg rounded-xl px-4 py-3 border border-white/10 outline-none font-black text-white focus:border-brand-orange-500/50 transition-all text-center text-lg"
-                                                placeholder="0"
-                                            />
-                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-gray-500 font-bold text-xs">บาท</span>
+                                        {/* Price */}
+                                        <div className="px-5 py-3 border-b border-white/8">
+                                            <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">ค่าเช่ารายเดือน</p>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    value={selectedRoom.price || ''}
+                                                    onChange={(e) => setSelectedRoom({ ...selectedRoom, price: parseInt(e.target.value) || 0 })}
+                                                    className="w-full bg-brand-bg rounded-xl px-4 py-3 border border-white/10 outline-none font-black text-white focus:border-brand-orange-500/50 transition-all text-center text-lg"
+                                                    placeholder="0"
+                                                />
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-gray-500 font-bold text-xs">บาท</span>
+                                            </div>
+                                            {currentApt?.utilityRates && (
+                                                <div className="mt-2 flex items-center justify-between px-1">
+                                                    <p className="text-[10px] font-bold text-brand-gray-500 flex items-center gap-1.5">
+                                                        <Zap className="w-3 h-3 text-yellow-500" />
+                                                        ไฟฟ้า {currentApt.utilityRates.electricity} บ.
+                                                    </p>
+                                                    <p className="text-[10px] font-bold text-brand-gray-500 flex items-center gap-1.5">
+                                                        <Droplets className="w-3 h-3 text-blue-500" />
+                                                        น้ำ {currentApt.utilityRates.water} บ.
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
-                                        {currentApt?.utilityRates && (
-                                            <div className="mt-2 flex items-center justify-between px-1">
-                                                <p className="text-[10px] font-bold text-brand-gray-500 flex items-center gap-1.5">
-                                                    <Zap className="w-3 h-3 text-yellow-500" />
-                                                    ไฟฟ้า {currentApt.utilityRates.electricity} บ.
-                                                </p>
-                                                <p className="text-[10px] font-bold text-brand-gray-500 flex items-center gap-1.5">
-                                                    <Droplets className="w-3 h-3 text-blue-500" />
-                                                    น้ำ {currentApt.utilityRates.water} บ.
-                                                </p>
+
+                                        {/* Meter Readings */}
+                                        <div className="px-5 py-3 border-b border-white/8">
+                                            <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">มิเตอร์ล่าสุด</p>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-2">
+                                                    <label className="text-[9px] font-bold text-brand-gray-500 uppercase flex items-center gap-1.5 ml-1">
+                                                        <Zap className="w-3 h-3 text-yellow-500" /> ไฟฟ้า
+                                                    </label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="number"
+                                                            value={selectedRoom.electricityMeter || 0}
+                                                            onChange={(e) => setSelectedRoom({ ...selectedRoom, electricityMeter: parseFloat(e.target.value) || 0 })}
+                                                            className="w-full bg-brand-bg rounded-xl px-3 py-2 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center text-sm"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[9px] font-bold text-brand-gray-500 uppercase flex items-center gap-1.5 ml-1">
+                                                        <Droplets className="w-3 h-3 text-blue-500" /> น้ำ
+                                                    </label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="number"
+                                                            value={selectedRoom.waterMeter || 0}
+                                                            onChange={(e) => setSelectedRoom({ ...selectedRoom, waterMeter: parseFloat(e.target.value) || 0 })}
+                                                            className="w-full bg-brand-bg rounded-xl px-3 py-2 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center text-sm"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Tenant info */}
+                                        {selectedRoom.tenantId && (
+                                            <div className="px-5 py-3 border-b border-white/8">
+                                                <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">ผู้เช่า</p>
+                                                <button
+                                                    onClick={() => navigate(`/tenants?tenantId=${selectedRoom.tenantId}`)}
+                                                    className="w-full flex items-center gap-2 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/30 rounded-xl px-3 py-2.5 transition-all group text-left"
+                                                >
+                                                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                                                        <User className="w-4 h-4 text-blue-400" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-white font-bold text-xs truncate">{selectedRoom.tenantName || 'ไม่ระบุ'}</p>
+                                                        <p className="text-[10px] text-brand-gray-500">คลิกเพื่อดูข้อมูลผู้เช่า</p>
+                                                    </div>
+                                                    <ExternalLink className="w-3.5 h-3.5 text-brand-gray-600 group-hover:text-blue-400 transition-colors shrink-0" />
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* Fixed Expenses (collapsible) */}
+                                        {currentApt?.fixedExpenses && currentApt.fixedExpenses.length > 0 && (
+                                            <div className="px-5 py-3 border-b border-white/8">
+                                                <button
+                                                    onClick={() => setShowExpenses(!showExpenses)}
+                                                    className="w-full flex items-center justify-between group"
+                                                >
+                                                    <span className="text-sm font-black text-white">ค่าบริการเพิ่มเติม</span>
+                                                    <ChevronDown className={`w-4 h-4 text-brand-gray-500 transition-transform duration-200 ${showExpenses ? 'rotate-180' : ''}`} />
+                                                </button>
+
+                                                {showExpenses && (
+                                                    <div className="mt-3 grid grid-cols-2 gap-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                        {currentApt.fixedExpenses.map((expense, idx) => {
+                                                            const isActive = selectedRoom.fixedExpenses?.find(fe => fe.name === expense.name)?.active;
+                                                            return (
+                                                                <button
+                                                                    key={idx}
+                                                                    onClick={() => {
+                                                                        const currentFixed = selectedRoom.fixedExpenses || [];
+                                                                        const existingIdx = currentFixed.findIndex(fe => fe.name === expense.name);
+                                                                        let newFixed;
+                                                                        if (existingIdx >= 0) {
+                                                                            newFixed = [...currentFixed];
+                                                                            newFixed[existingIdx].active = !newFixed[existingIdx].active;
+                                                                        } else {
+                                                                            newFixed = [...currentFixed, { ...expense, active: true }];
+                                                                        }
+                                                                        setSelectedRoom({ ...selectedRoom, fixedExpenses: newFixed });
+                                                                    }}
+                                                                    className={`flex items-center justify-between px-3 py-2 rounded-lg border text-[11px] font-bold transition-all ${isActive
+                                                                        ? 'bg-brand-orange-500/10 border-brand-orange-500/30 text-brand-orange-400'
+                                                                        : 'bg-white/3 border-white/8 text-brand-gray-400'
+                                                                        }`}
+                                                                >
+                                                                    <span>{expense.name}</span>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span>{expense.amount?.toLocaleString()} บ.</span>
+                                                                        <div className={`w-3 h-3 rounded-full border flex items-center justify-center ${isActive ? 'bg-brand-orange-500 border-brand-orange-500' : 'border-white/20'}`}>
+                                                                            {isActive && <Check className="w-2 h-2 text-brand-bg" strokeWidth={5} />}
+                                                                        </div>
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Amenities (collapsible) */}
+                                        {selectedRoom.amenities && selectedRoom.amenities.length > 0 && (
+                                            <div className="px-5 py-3 border-b border-white/8">
+                                                <button
+                                                    onClick={() => setShowAmenities(!showAmenities)}
+                                                    className="w-full flex items-center justify-between group"
+                                                >
+                                                    <span className="text-sm font-black text-white">สิ่งอำนวยความสะดวก</span>
+                                                    <ChevronDown className={`w-4 h-4 text-brand-gray-500 transition-transform duration-200 ${showAmenities ? 'rotate-180' : ''}`} />
+                                                </button>
+
+                                                {showAmenities && (
+                                                    <div className="mt-3 grid grid-cols-2 gap-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                        {selectedRoom.amenities.map((amenity, idx) => (
+                                                            <button
+                                                                key={idx}
+                                                                onClick={() => {
+                                                                    const newAms = [...selectedRoom.amenities];
+                                                                    newAms[idx].status = !newAms[idx].status;
+                                                                    setSelectedRoom({ ...selectedRoom, amenities: newAms });
+                                                                }}
+                                                                className={`flex items-center px-3 py-2 rounded-lg border transition-all text-[11px] font-bold ${amenity.status
+                                                                    ? 'bg-white/10 border-white/20 text-white'
+                                                                    : 'bg-transparent border-white/5 text-brand-gray-400'
+                                                                    }`}
+                                                            >
+                                                                <div className={`w-3 h-3 rounded-md mr-2 flex items-center justify-center border ${amenity.status ? 'bg-brand-orange-500 border-brand-orange-500' : 'border-white/10'}`}>
+                                                                    {amenity.status && <Check className="w-2 h-2 text-brand-bg" strokeWidth={4} />}
+                                                                </div>
+                                                                {amenity.name}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* Meter Readings */}
-                                    <div className="px-5 py-3 border-b border-white/8">
-                                        <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">มิเตอร์ล่าสุด</p>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-2">
-                                                <label className="text-[9px] font-bold text-brand-gray-500 uppercase flex items-center gap-1.5 ml-1">
-                                                    <Zap className="w-3 h-3 text-yellow-500" /> ไฟฟ้า
-                                                </label>
-                                                <div className="relative">
-                                                    <input
-                                                        type="number"
-                                                        value={selectedRoom.electricityMeter || 0}
-                                                        onChange={(e) => setSelectedRoom({ ...selectedRoom, electricityMeter: parseFloat(e.target.value) || 0 })}
-                                                        className="w-full bg-brand-bg rounded-xl px-3 py-2 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center text-sm"
-                                                        placeholder="0"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[9px] font-bold text-brand-gray-500 uppercase flex items-center gap-1.5 ml-1">
-                                                    <Droplets className="w-3 h-3 text-blue-500" /> น้ำ
-                                                </label>
-                                                <div className="relative">
-                                                    <input
-                                                        type="number"
-                                                        value={selectedRoom.waterMeter || 0}
-                                                        onChange={(e) => setSelectedRoom({ ...selectedRoom, waterMeter: parseFloat(e.target.value) || 0 })}
-                                                        className="w-full bg-brand-bg rounded-xl px-3 py-2 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center text-sm"
-                                                        placeholder="0"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
+                                    {/* actions footer */}
+                                    <div className="px-5 pb-4 pt-4 border-t border-white/8 shrink-0">
+                                        <button
+                                            onClick={handleSaveRoom}
+                                            disabled={saving}
+                                            className="w-full py-2.5 bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-40 text-brand-bg rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-brand-orange-500/20"
+                                        >
+                                            {saving
+                                                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> กำลังบันทึก...</>
+                                                : <><Save className="w-3.5 h-3.5" /> บันทึกข้อมูล</>
+                                            }
+                                        </button>
                                     </div>
-
-                                    {/* Tenant info */}
-                                    {selectedRoom.tenantId && (
-                                        <div className="px-5 py-3 border-b border-white/8">
-                                            <p className="text-[10px] font-medium text-brand-gray-600 uppercase tracking-wider mb-2">ผู้เช่า</p>
-                                            <button
-                                                onClick={() => navigate(`/tenants?tenantId=${selectedRoom.tenantId}`)}
-                                                className="w-full flex items-center gap-2 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/30 rounded-xl px-3 py-2.5 transition-all group text-left"
-                                            >
-                                                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
-                                                    <User className="w-4 h-4 text-blue-400" />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-white font-bold text-xs truncate">{selectedRoom.tenantName || 'ไม่ระบุ'}</p>
-                                                    <p className="text-[10px] text-brand-gray-500">คลิกเพื่อดูข้อมูลผู้เช่า</p>
-                                                </div>
-                                                <ExternalLink className="w-3.5 h-3.5 text-brand-gray-600 group-hover:text-blue-400 transition-colors shrink-0" />
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {/* Fixed Expenses (collapsible) */}
-                                    {currentApt?.fixedExpenses && currentApt.fixedExpenses.length > 0 && (
-                                        <div className="px-5 py-3 border-b border-white/8">
-                                            <button
-                                                onClick={() => setShowExpenses(!showExpenses)}
-                                                className="w-full flex items-center justify-between group"
-                                            >
-                                                <span className="text-sm font-black text-white">ค่าบริการเพิ่มเติม</span>
-                                                <ChevronDown className={`w-4 h-4 text-brand-gray-500 transition-transform duration-200 ${showExpenses ? 'rotate-180' : ''}`} />
-                                            </button>
-
-                                            {showExpenses && (
-                                                <div className="mt-3 grid grid-cols-2 gap-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                    {currentApt.fixedExpenses.map((expense, idx) => {
-                                                        const isActive = selectedRoom.fixedExpenses?.find(fe => fe.name === expense.name)?.active;
-                                                        return (
-                                                            <button
-                                                                key={idx}
-                                                                onClick={() => {
-                                                                    const currentFixed = selectedRoom.fixedExpenses || [];
-                                                                    const existingIdx = currentFixed.findIndex(fe => fe.name === expense.name);
-                                                                    let newFixed;
-                                                                    if (existingIdx >= 0) {
-                                                                        newFixed = [...currentFixed];
-                                                                        newFixed[existingIdx].active = !newFixed[existingIdx].active;
-                                                                    } else {
-                                                                        newFixed = [...currentFixed, { ...expense, active: true }];
-                                                                    }
-                                                                    setSelectedRoom({ ...selectedRoom, fixedExpenses: newFixed });
-                                                                }}
-                                                                className={`flex items-center justify-between px-3 py-2 rounded-lg border text-[11px] font-bold transition-all ${isActive
-                                                                    ? 'bg-brand-orange-500/10 border-brand-orange-500/30 text-brand-orange-400'
-                                                                    : 'bg-white/3 border-white/8 text-brand-gray-400'
-                                                                    }`}
-                                                            >
-                                                                <span>{expense.name}</span>
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span>{expense.amount?.toLocaleString()} บ.</span>
-                                                                    <div className={`w-3 h-3 rounded-full border flex items-center justify-center ${isActive ? 'bg-brand-orange-500 border-brand-orange-500' : 'border-white/20'}`}>
-                                                                        {isActive && <Check className="w-2 h-2 text-brand-bg" strokeWidth={5} />}
-                                                                    </div>
-                                                                </div>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Amenities (collapsible) */}
-                                    {selectedRoom.amenities && selectedRoom.amenities.length > 0 && (
-                                        <div className="px-5 py-3 border-b border-white/8">
-                                            <button
-                                                onClick={() => setShowAmenities(!showAmenities)}
-                                                className="w-full flex items-center justify-between group"
-                                            >
-                                                <span className="text-sm font-black text-white">สิ่งอำนวยความสะดวก</span>
-                                                <ChevronDown className={`w-4 h-4 text-brand-gray-500 transition-transform duration-200 ${showAmenities ? 'rotate-180' : ''}`} />
-                                            </button>
-
-                                            {showAmenities && (
-                                                <div className="mt-3 grid grid-cols-2 gap-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                    {selectedRoom.amenities.map((amenity, idx) => (
-                                                        <button
-                                                            key={idx}
-                                                            onClick={() => {
-                                                                const newAms = [...selectedRoom.amenities];
-                                                                newAms[idx].status = !newAms[idx].status;
-                                                                setSelectedRoom({ ...selectedRoom, amenities: newAms });
-                                                            }}
-                                                            className={`flex items-center px-3 py-2 rounded-lg border transition-all text-[11px] font-bold ${amenity.status
-                                                                ? 'bg-white/10 border-white/20 text-white'
-                                                                : 'bg-transparent border-white/5 text-brand-gray-400'
-                                                                }`}
-                                                        >
-                                                            <div className={`w-3 h-3 rounded-md mr-2 flex items-center justify-center border ${amenity.status ? 'bg-brand-orange-500 border-brand-orange-500' : 'border-white/10'}`}>
-                                                                {amenity.status && <Check className="w-2 h-2 text-brand-bg" strokeWidth={4} />}
-                                                            </div>
-                                                            {amenity.name}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* actions footer */}
-                                <div className="px-5 pb-4 pt-4 border-t border-white/8 shrink-0">
-                                    <button
-                                        onClick={handleSaveRoom}
-                                        disabled={saving}
-                                        className="w-full py-2.5 bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-40 text-brand-bg rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-brand-orange-500/20"
-                                    >
-                                        {saving
-                                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> กำลังบันทึก...</>
-                                            : <><Save className="w-3.5 h-3.5" /> บันทึกข้อมูล</>
-                                        }
-                                    </button>
                                 </div>
                             </div>
-                        </div>
+                        </>
                     )}
                 </div>
             </div>

@@ -87,6 +87,7 @@ export default function ApartmentSettings({ user }) {
     const [approvalAmenities, setApprovalAmenities] = useState([]);
     const [approvalWaterMeter, setApprovalWaterMeter] = useState(0);
     const [approvalElecMeter, setApprovalElecMeter] = useState(0);
+    const [approvalDeposit, setApprovalDeposit] = useState(0);
     const [contractInfo, setContractInfo] = useState({ pdfURL: '', template: '' });
     const [uploadingContract, setUploadingContract] = useState(false);
 
@@ -381,6 +382,7 @@ export default function ApartmentSettings({ user }) {
                             price: selectedRoomObj.price || utilityRates.baseRent || 0,
                             waterMeter: parseFloat(approvalWaterMeter) || 0,
                             electricityMeter: parseFloat(approvalElecMeter) || 0,
+                            deposit: parseFloat(approvalDeposit) || 0,
                             fixedExpenses: approvalExpenses,
                             amenities: approvalAmenities,
                             updatedAt: serverTimestamp()
@@ -397,6 +399,7 @@ export default function ApartmentSettings({ user }) {
                         price: rooms.find(r => r.roomNumber === roomNumber)?.price || utilityRates.baseRent || 0,
                         waterMeter: parseFloat(approvalWaterMeter) || 0,
                         electricityMeter: parseFloat(approvalElecMeter) || 0,
+                        deposit: parseFloat(approvalDeposit) || 0,
                         fixedExpenses: approvalExpenses,
                         amenities: approvalAmenities,
                         updatedAt: serverTimestamp()
@@ -567,7 +570,6 @@ export default function ApartmentSettings({ user }) {
                             { id: 'rooms', icon: <Layers className="w-3.5 h-3.5 mr-1.5" />, label: 'ห้องพัก' },
                             { id: 'amenities', icon: <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />, label: 'แม่แบบ' },
                             { id: 'expenses', icon: <CreditCard className="w-3.5 h-3.5 mr-1.5" />, label: 'ค่าใช้จ่าย' },
-                            { id: 'contract', icon: <FileText className="w-3.5 h-3.5 mr-1.5" />, label: 'สัญญา' },
                         ].map(t => (
                             <button
                                 key={t.id}
@@ -1020,96 +1022,6 @@ export default function ApartmentSettings({ user }) {
                                 </div>
                             )}
 
-                            {activeTab === 'contract' && (
-                                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <div className="flex items-center space-x-3 mb-2">
-                                        <div className="w-10 h-10 bg-brand-orange-500/10 rounded-xl flex items-center justify-center">
-                                            <FileText className="w-5 h-5 text-brand-orange-500" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-xl font-bold text-white uppercase tracking-tight">การจัดการสัญญา</h3>
-                                            <p className="text-brand-gray-400 text-xs font-medium mt-1">ตั้งค่าไฟล์สัญญาและร่างข้อความสัญญามาตรฐาน</p>
-                                        </div>
-                                    </div>
-
-                                    {/* PDF Upload Section */}
-                                    <div className="bg-brand-card/30 border border-white/10 rounded-2xl p-6">
-                                        <h4 className="text-sm font-bold text-white mb-4 flex items-center">
-                                            <UploadCloud className="w-4 h-4 mr-2 text-brand-orange-500" />
-                                            ไฟล์สัญญา (PDF)
-                                        </h4>
-                                        <div className="flex flex-col md:flex-row items-center gap-6">
-                                            <div className="flex-1 w-full">
-                                                <div className="bg-brand-bg/50 border-2 border-dashed border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all hover:border-brand-orange-500/30 group relative overflow-hidden">
-                                                    {contractInfo.pdfURL ? (
-                                                        <>
-                                                            <div className="w-16 h-16 bg-brand-orange-500/20 rounded-2xl flex items-center justify-center mb-4 text-brand-orange-500">
-                                                                <FileText size={32} />
-                                                            </div>
-                                                            <p className="text-white font-bold text-sm mb-1 uppercase tracking-tight">มีไฟล์สัญญาอยู่ในระบบแล้ว</p>
-                                                            <div className="flex gap-3 mt-4">
-                                                                <a
-                                                                    href={contractInfo.pdfURL}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="flex items-center px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-bold transition-all"
-                                                                >
-                                                                    <ExternalLink size={14} className="mr-2" />
-                                                                    ดูไฟล์ปัจจุบัน
-                                                                </a>
-                                                                <label className="flex items-center px-4 py-2 bg-brand-orange-500 text-brand-bg rounded-xl text-xs font-bold hover:bg-brand-orange-400 transition-all cursor-pointer">
-                                                                    <UploadCloud size={14} className="mr-2" />
-                                                                    {uploadingContract ? 'กำลังอัปโหลด...' : 'อัปโหลดใหม่'}
-                                                                    <input type="file" className="hidden" accept=".pdf" onChange={handleContractPDFUpload} disabled={uploadingContract} />
-                                                                </label>
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-4 text-brand-gray-600 group-hover:text-brand-orange-500 transition-all">
-                                                                <UploadCloud size={32} />
-                                                            </div>
-                                                            <p className="text-brand-gray-400 font-bold text-sm mb-1 uppercase tracking-tight">ยังไม่ได้อัปโหลดไฟล์สัญญา</p>
-                                                            <p className="text-[10px] text-brand-gray-500 font-medium mb-4 uppercase tracking-widest">ขนาดไฟล์ไม่เกิน 5MB (เฉพาะ .PDF)</p>
-                                                            <label className="flex items-center px-6 py-2.5 bg-brand-orange-500 text-brand-bg rounded-xl text-xs font-bold hover:bg-brand-orange-400 transition-all cursor-pointer shadow-lg shadow-brand-orange-500/20">
-                                                                {uploadingContract ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                                                                {uploadingContract ? 'กำลังอัปโหลด...' : 'เลือกไฟล์เพื่ออัปโหลด'}
-                                                                <input type="file" className="hidden" accept=".pdf" onChange={handleContractPDFUpload} disabled={uploadingContract} />
-                                                            </label>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Template Section */}
-                                    <div className="bg-brand-card/30 border border-white/10 rounded-2xl p-6">
-                                        <h4 className="text-sm font-bold text-white mb-4 flex items-center uppercase tracking-tight">
-                                            <FileText className="w-4 h-4 mr-2 text-brand-orange-500" />
-                                            ร่างข้อความสัญญา (Template)
-                                        </h4>
-                                        <div className="relative">
-                                            <textarea
-                                                value={contractInfo.template}
-                                                onChange={(e) => setContractInfo(prev => ({ ...prev, template: e.target.value }))}
-                                                rows="12"
-                                                className="w-full bg-brand-bg/50 rounded-2xl p-6 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all resize-none text-sm placeholder:text-white/5 leading-relaxed"
-                                                placeholder="เขียนระเบียบการ หรือข้อตกลงเบื้องต้นของหอพักที่นี่..."
-                                            ></textarea>
-                                            <div className="absolute top-4 right-4 text-[10px] font-black text-brand-gray-600 uppercase tracking-widest pointer-events-none">
-                                                Contract Draft
-                                            </div>
-                                        </div>
-                                        <div className="mt-4 flex items-start gap-3 bg-brand-orange-500/5 border border-brand-orange-500/10 rounded-xl p-4">
-                                            <Info className="w-4 h-4 text-brand-orange-500 mt-0.5 shrink-0" />
-                                            <p className="text-[11px] text-brand-gray-400 font-medium leading-relaxed">
-                                                ข้อความนี้จะแสดงให้ผู้เช่าเห็นในหน้าลงทะเบียนหรือหน้าจัดการห้องพัก เพื่อให้รับทราบเงื่อนไขเบื้องต้นก่อนเข้าพัก
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
 
                             {activeTab === 'staff' && (
                                 <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1547,6 +1459,7 @@ export default function ApartmentSettings({ user }) {
                                                                 setApprovalAmenities(initialRoom?.amenities || amenities.map(am => ({ ...am, status: true })));
                                                                 setApprovalWaterMeter(initialRoom?.waterMeter || 0);
                                                                 setApprovalElecMeter(initialRoom?.electricityMeter || 0);
+                                                                setApprovalDeposit(initialRoom?.deposit || utilityRates.roomDeposit || 0);
                                                                 setIsApproveModalOpen(true);
                                                             }
                                                         }}
@@ -1663,7 +1576,8 @@ export default function ApartmentSettings({ user }) {
                                         <p className="text-sm font-black text-brand-orange-500">
                                             {(
                                                 (approvalRoom.price || utilityRates.baseRent || 0) +
-                                                approvalExpenses.filter(e => e.active).reduce((sum, e) => sum + e.amount, 0)
+                                                approvalExpenses.filter(e => e.active).reduce((sum, e) => sum + e.amount, 0) +
+                                                (parseFloat(approvalDeposit) || 0)
                                             ).toLocaleString()} บ.
                                         </p>
                                     </div>
@@ -1692,6 +1606,7 @@ export default function ApartmentSettings({ user }) {
                                             setApprovalAmenities(r.amenities || amenities.map(am => ({ ...am, status: true })));
                                             setApprovalWaterMeter(r.waterMeter || 0);
                                             setApprovalElecMeter(r.electricityMeter || 0);
+                                            setApprovalDeposit(r.deposit || utilityRates.roomDeposit || 0);
                                         }
                                     }}
                                     className="w-full bg-brand-bg border border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-white outline-none focus:border-brand-orange-500/50 transition-all appearance-none text-center"
@@ -1706,15 +1621,33 @@ export default function ApartmentSettings({ user }) {
                             {approvalRoom && (
                                 <>
                                     {/* Summary Row */}
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-3 gap-3">
                                         <div className="bg-brand-bg/50 p-4 rounded-2xl border border-white/5">
                                             <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest mb-1">ค่าเช่าหลัก</p>
-                                            <p className="text-xl font-black text-white">{approvalRoom.price?.toLocaleString() || utilityRates.baseRent?.toLocaleString()} <span className="text-xs font-bold text-brand-gray-500">บ.</span></p>
+                                            <p className="text-xl font-black text-white">{(approvalRoom.price || utilityRates.baseRent || 0).toLocaleString()} <span className="text-xs font-bold text-brand-gray-500">บ.</span></p>
+                                        </div>
+                                        <div className="bg-brand-bg/50 p-4 rounded-2xl border border-white/5">
+                                            <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest mb-1">ค่ามัดจำ</p>
+                                            <p className="text-xl font-black text-brand-orange-500">{(parseFloat(approvalDeposit) || 0).toLocaleString()} <span className="text-xs font-bold text-brand-orange-500/60">บ.</span></p>
                                         </div>
                                         <div className="bg-brand-bg/50 p-4 rounded-2xl border border-white/5">
                                             <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest mb-1">ชั้นที่พัก</p>
                                             <p className="text-xl font-black text-white">{approvalRoom.floor} <span className="text-xs font-bold text-brand-gray-500">FL.</span></p>
                                         </div>
+                                    </div>
+
+                                    {/* Deposit Input */}
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest block ml-1 flex items-center gap-1">
+                                            <CreditCard className="w-3 h-3 text-brand-orange-500" /> ค่ามัดจำ (บาท)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={approvalDeposit}
+                                            onChange={(e) => setApprovalDeposit(e.target.value)}
+                                            className="w-full bg-brand-bg rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center"
+                                            placeholder="0"
+                                        />
                                     </div>
 
                                     {/* Utilities Info */}
@@ -1846,6 +1779,13 @@ export default function ApartmentSettings({ user }) {
                                                 <span className="text-xs font-bold text-brand-orange-400">{e.amount.toLocaleString()} บ.</span>
                                             </div>
                                         ))}
+                                        {/* Deposit line */}
+                                        {(parseFloat(approvalDeposit) || 0) > 0 && (
+                                            <div className="flex justify-between items-center py-1">
+                                                <span className="text-xs text-brand-gray-500">ค่ามัดจำ (ชำระครั้งแรก)</span>
+                                                <span className="text-xs font-bold text-brand-orange-400">{(parseFloat(approvalDeposit) || 0).toLocaleString()} บ.</span>
+                                            </div>
+                                        )}
                                         <div className="border-t border-white/10 mt-2 pt-2 flex justify-between items-center">
                                             <span className="text-xs font-bold text-brand-gray-400 uppercase">รวม</span>
                                             <div className="text-right">
@@ -1853,10 +1793,12 @@ export default function ApartmentSettings({ user }) {
                                                     {((approvalRoom.price || utilityRates.baseRent || 0) +
                                                         approvalExpenses
                                                             .filter(e => e.active)
-                                                            .reduce((sum, e) => sum + e.amount, 0)
+                                                            .reduce((sum, e) => sum + e.amount, 0) +
+                                                        (parseFloat(approvalDeposit) || 0)
                                                     ).toLocaleString()}
                                                     <span className="text-xs font-bold ml-1.5 uppercase">บาท</span>
                                                 </p>
+                                                <p className="text-[9px] text-brand-gray-500 italic mt-0.5">(รวมค่ามัดจำ)</p>
                                             </div>
                                         </div>
                                     </div>

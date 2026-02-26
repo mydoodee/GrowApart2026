@@ -189,7 +189,6 @@ export default function MeterCollection({ user }) {
                 [roomNumber]: {
                     ...prev[roomNumber],
                     [isElec ? 'savedElec' : 'savedWater']: true,
-                    [isElec ? 'oldElec' : 'oldWater']: newVal,
                 }
             }));
             showToast(`บันทึกมิเตอร์ห้อง ${roomNumber} เรียบร้อย`, 'success');
@@ -366,14 +365,14 @@ export default function MeterCollection({ user }) {
                                                     <div className="bg-brand-bg/60 rounded-xl px-3 py-2.5 border border-white/5">
                                                         <p className="text-[10px] font-medium text-brand-gray-500 mb-1 flex items-center gap-1">
                                                             {isElec ? <Zap className="w-2.5 h-2.5 text-yellow-500" /> : <Droplets className="w-2.5 h-2.5 text-blue-400" />}
-                                                            มิเตอร์เก่า
+                                                            มิเตอร์ล่าสุด
                                                         </p>
                                                         <p className="text-base font-bold text-brand-gray-300">{oldVal?.toLocaleString() || 0}</p>
                                                     </div>
                                                     {/* New reading */}
                                                     <div className={`rounded-xl px-3 py-2.5 border transition-all ${isSaved ? 'bg-emerald-500/5 border-emerald-500/20' :
-                                                            (newValInput !== '' && newVal < oldVal) ? 'bg-red-500/5 border-red-500/50 focus-within:border-red-500' :
-                                                                'bg-brand-bg border-white/10 focus-within:border-brand-orange-500/50'
+                                                        (newValInput !== '' && newVal < oldVal) ? 'bg-red-500/5 border-red-500/50 focus-within:border-red-500' :
+                                                            'bg-brand-bg border-white/10 focus-within:border-brand-orange-500/50'
                                                         }`}>
                                                         <p className={`text-[10px] font-medium mb-1 ${newValInput !== '' && newVal < oldVal ? 'text-red-400' : 'text-brand-gray-500'}`}>
                                                             มิเตอร์ใหม่ {newValInput !== '' && newVal < oldVal && '(ต้องไม่น้อยกว่าค่าเก่า)'}
