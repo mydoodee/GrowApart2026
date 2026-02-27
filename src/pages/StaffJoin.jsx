@@ -10,17 +10,14 @@ export default function StaffJoin({ user, userRole }) {
     const { aptId } = useParams();
     const navigate = useNavigate();
     const { toast, showToast, hideToast } = useToast();
-
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [apartment, setApartment] = useState(null);
     const [requestStatus, setRequestStatus] = useState(null); // 'pending', 'approved', null
-
     const [phone, setPhone] = useState('');
     const [name, setName] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-
     useEffect(() => {
         async function checkData() {
             try {
