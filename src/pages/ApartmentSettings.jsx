@@ -10,7 +10,8 @@ import { sendPasswordResetEmail } from 'firebase/auth';
 import {
     Save, Layers, CheckCircle2,
     Plus, Trash2, MapPin, Info, LayoutGrid, ClipboardList, Check, Phone, QrCode, User, CreditCard, Building,
-    Zap, Droplets, PlusSquare, X, MessageSquare, Loader2, Link as LinkIcon, Search, ChevronDown
+    Zap, Droplets, PlusSquare, X, MessageSquare, Loader2, Link as LinkIcon, Search, ChevronDown,
+    FileText, UploadCloud, ExternalLink
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Toast, { useToast } from '../components/Toast';
@@ -67,7 +68,8 @@ export default function ApartmentSettings({ user }) {
     const [utilityRates, setUtilityRates] = useState({
         electricity: 7, // Baht per unit
         water: 18,      // Baht per unit
-        baseRent: 0     // Monthly rent
+        baseRent: 0,    // Monthly rent
+        roomDeposit: 0   // Room deposit
     });
     const [fixedExpenses, setFixedExpenses] = useState([
         { name: 'ค่าจอดรถ', amount: 0 },
@@ -83,6 +85,11 @@ export default function ApartmentSettings({ user }) {
     const [approvalRoom, setApprovalRoom] = useState(null);
     const [approvalExpenses, setApprovalExpenses] = useState([]);
     const [approvalAmenities, setApprovalAmenities] = useState([]);
+    const [approvalWaterMeter, setApprovalWaterMeter] = useState(0);
+    const [approvalElecMeter, setApprovalElecMeter] = useState(0);
+    const [approvalDeposit, setApprovalDeposit] = useState(0);
+    const [contractInfo, setContractInfo] = useState({ pdfURL: '', template: '' });
+    const [uploadingContract, setUploadingContract] = useState(false);
 
     useEffect(() => {
         async function loadData() {
@@ -112,11 +119,12 @@ export default function ApartmentSettings({ user }) {
                     setFloors(currentApt.floors || [{ id: 1, roomCount: 5 }]);
                     setAmenities(currentApt.amenities || amenities);
                     setManagers(currentApt.managers || []);
-                    setUtilityRates(currentApt.utilityRates || { electricity: 7, water: 18, baseRent: 0 });
+                    setUtilityRates(currentApt.utilityRates || { electricity: 7, water: 18, baseRent: 0, roomDeposit: 0 });
                     setFixedExpenses(currentApt.fixedExpenses || [
                         { name: 'ค่าจอดรถ', amount: 0 },
                         { name: 'WiFi', amount: 0 }
                     ]);
+                    setContractInfo(currentApt.contractInfo || { pdfURL: '', template: '' });
 
                     // Fetch rooms
                     const roomsQ = query(collection(db, 'rooms'), where('apartmentId', '==', currentId));
@@ -134,7 +142,8 @@ export default function ApartmentSettings({ user }) {
                                     roomNumber: roomNo,
                                     floor: floor.id,
                                     status: 'ว่าง',
-                                    apartmentId: currentId
+                                    apartmentId: currentId,
+                                    price: currentApt.utilityRates?.baseRent || 0
                                 });
                             }
                         });
@@ -292,6 +301,7 @@ export default function ApartmentSettings({ user }) {
                 managers,
                 utilityRates,
                 fixedExpenses,
+                contractInfo,
                 updatedAt: serverTimestamp()
             };
 
@@ -369,6 +379,10 @@ export default function ApartmentSettings({ user }) {
                             tenantId: request.userId,
                             tenantName: request.userName,
                             status: 'ไม่ว่าง',
+                            price: selectedRoomObj.price || utilityRates.baseRent || 0,
+                            waterMeter: parseFloat(approvalWaterMeter) || 0,
+                            electricityMeter: parseFloat(approvalElecMeter) || 0,
+                            deposit: parseFloat(approvalDeposit) || 0,
                             fixedExpenses: approvalExpenses,
                             amenities: approvalAmenities,
                             updatedAt: serverTimestamp()
@@ -382,6 +396,10 @@ export default function ApartmentSettings({ user }) {
                         tenantId: request.userId,
                         tenantName: request.userName,
                         status: 'ไม่ว่าง',
+                        price: rooms.find(r => r.roomNumber === roomNumber)?.price || utilityRates.baseRent || 0,
+                        waterMeter: parseFloat(approvalWaterMeter) || 0,
+                        electricityMeter: parseFloat(approvalElecMeter) || 0,
+                        deposit: parseFloat(approvalDeposit) || 0,
                         fixedExpenses: approvalExpenses,
                         amenities: approvalAmenities,
                         updatedAt: serverTimestamp()
@@ -479,6 +497,35 @@ export default function ApartmentSettings({ user }) {
         } catch (error) {
             console.error('Error removing staff:', error);
             showToast('ลบพนักงานล้มเหลว', 'error');
+        }
+    };
+
+    const handleContractPDFUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.type !== 'application/pdf') {
+            showToast('กรุณาเลือกไฟล์ PDF เท่านั้น', 'error');
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('ขนาดไฟล์ต้องไม่เกิน 5MB', 'error');
+            return;
+        }
+
+        setUploadingContract(true);
+        try {
+            const storageRef = ref(storage2, `contracts/${activeAptId}/${Date.now()}_${file.name}`);
+            const snapshot = await uploadBytes(storageRef, file);
+            const downloadURL = await getDownloadURL(snapshot.ref);
+            setContractInfo(prev => ({ ...prev, pdfURL: downloadURL }));
+            showToast('อัปโหลดไฟล์สัญญาเรียบร้อย', 'success');
+        } catch (error) {
+            console.error('Error uploading contract:', error);
+            showToast('อัปโหลดไฟล์สัญญาล้มเหลว', 'error');
+        } finally {
+            setUploadingContract(false);
         }
     };
 
@@ -810,19 +857,37 @@ export default function ApartmentSettings({ user }) {
                                                 <p className="text-brand-gray-300 text-[11px] font-medium">กำหนดค่าเช่าเริ่มต้นต่อเดือนสำหรับทุกห้อง</p>
                                             </div>
                                         </div>
-                                        <div className="bg-brand-card/30 border border-white/5 p-4 rounded-2xl group hover:border-brand-orange-500/30 transition-all">
-                                            <div className="flex items-center justify-between mb-3">
-                                                <span className="text-[11px] font-black text-brand-gray-400 uppercase tracking-widest">ค่าเช่ารายเดือน (บาท)</span>
-                                                <Building className="w-3.5 h-3.5 text-brand-orange-500" />
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div className="bg-brand-card/30 border border-white/5 p-4 rounded-2xl group hover:border-brand-orange-500/30 transition-all">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[11px] font-black text-brand-gray-400 uppercase tracking-widest">ค่าเช่รายเดือน (บาท)</span>
+                                                    <Building className="w-3.5 h-3.5 text-brand-orange-500" />
+                                                </div>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        value={utilityRates.baseRent || ''}
+                                                        onChange={(e) => setUtilityRates({ ...utilityRates, baseRent: parseFloat(e.target.value) || 0 })}
+                                                        className="w-full bg-brand-bg/50 rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-lg text-center font-mono"
+                                                        placeholder="0"
+                                                    />
+                                                </div>
                                             </div>
-                                            <div className="relative">
-                                                <input
-                                                    type="number"
-                                                    value={utilityRates.baseRent || ''}
-                                                    onChange={(e) => setUtilityRates({ ...utilityRates, baseRent: parseFloat(e.target.value) || 0 })}
-                                                    className="w-full bg-brand-bg/50 rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-lg text-center font-mono"
-                                                    placeholder="0"
-                                                />
+
+                                            <div className="bg-brand-card/30 border border-white/5 p-4 rounded-2xl group hover:border-brand-orange-500/30 transition-all">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[11px] font-black text-brand-gray-400 uppercase tracking-widest">ค่ามัดจำห้อง (บาท)</span>
+                                                    <CreditCard className="w-3.5 h-3.5 text-brand-orange-500" />
+                                                </div>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        value={utilityRates.roomDeposit || ''}
+                                                        onChange={(e) => setUtilityRates({ ...utilityRates, roomDeposit: parseFloat(e.target.value) || 0 })}
+                                                        className="w-full bg-brand-bg/50 rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-lg text-center font-mono"
+                                                        placeholder="0"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -956,6 +1021,7 @@ export default function ApartmentSettings({ user }) {
                                     </div>
                                 </div>
                             )}
+
 
                             {activeTab === 'staff' && (
                                 <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1389,8 +1455,11 @@ export default function ApartmentSettings({ user }) {
                                                                 const initialRoomNo = request.roomNumber || selectedRooms[request.id] || '';
                                                                 const initialRoom = rooms.find(r => r.roomNumber === initialRoomNo);
                                                                 setApprovalRoom(initialRoom || null);
-                                                                setApprovalExpenses(initialRoom?.fixedExpenses || fixedExpenses.map(fe => ({ ...fe, active: true })));
+                                                                setApprovalExpenses(initialRoom?.fixedExpenses || fixedExpenses.map(fe => ({ ...fe, active: fe.name !== 'ค่าจอดรถ' })));
                                                                 setApprovalAmenities(initialRoom?.amenities || amenities.map(am => ({ ...am, status: true })));
+                                                                setApprovalWaterMeter(initialRoom?.waterMeter || 0);
+                                                                setApprovalElecMeter(initialRoom?.electricityMeter || 0);
+                                                                setApprovalDeposit(initialRoom?.deposit || utilityRates.roomDeposit || 0);
                                                                 setIsApproveModalOpen(true);
                                                             }
                                                         }}
@@ -1491,17 +1560,32 @@ export default function ApartmentSettings({ user }) {
                     <div className="relative bg-brand-card w-full max-w-lg rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-brand-orange-500/10 rounded-xl flex items-center justify-center">
+                                <div className="w-10 h-10 bg-brand-orange-500/10 rounded-xl flex items-center justify-center shrink-0">
                                     <ClipboardList className="w-5 h-5 text-brand-orange-500" />
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-bold text-white">อนุมัติการเข้าพัก</h3>
-                                    <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest">{requestToApprove.userName || requestToApprove.userEmail || requestToApprove.userPhone}</p>
+                                    <h3 className="text-base font-bold text-white leading-tight">อนุมัติการเข้าพัก</h3>
+                                    <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest truncate max-w-[180px]">{requestToApprove.userName || requestToApprove.userEmail || requestToApprove.userPhone}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsApproveModalOpen(false)} className="text-brand-gray-300 hover:text-white transition-colors">
-                                <X className="w-6 h-6" />
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {/* ยอดรวมเล็กๆ ที่หัว */}
+                                {approvalRoom && (
+                                    <div className="text-right">
+                                        <p className="text-[9px] font-bold text-brand-gray-500 uppercase tracking-widest">รวม/เดือน</p>
+                                        <p className="text-sm font-black text-brand-orange-500">
+                                            {(
+                                                (approvalRoom.price || utilityRates.baseRent || 0) +
+                                                approvalExpenses.filter(e => e.active).reduce((sum, e) => sum + e.amount, 0) +
+                                                (parseFloat(approvalDeposit) || 0)
+                                            ).toLocaleString()} บ.
+                                        </p>
+                                    </div>
+                                )}
+                                <button onClick={() => setIsApproveModalOpen(false)} className="text-brand-gray-300 hover:text-white transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="p-6 space-y-5 h-[60vh] overflow-y-auto custom-scrollbar">
@@ -1514,8 +1598,15 @@ export default function ApartmentSettings({ user }) {
                                         const r = rooms.find(rm => rm.roomNumber === e.target.value);
                                         setApprovalRoom(r || null);
                                         if (r) {
-                                            setApprovalExpenses(r.fixedExpenses || fixedExpenses.map(fe => ({ ...fe, active: true })));
+                                            // ค่าบริการเริ่มต้น active: false ทั้งหมด ให้ user กดเปิดเอง
+                                            setApprovalExpenses(r.fixedExpenses
+                                                ? r.fixedExpenses.map(fe => ({ ...fe, active: false }))
+                                                : fixedExpenses.map(fe => ({ ...fe, active: false }))
+                                            );
                                             setApprovalAmenities(r.amenities || amenities.map(am => ({ ...am, status: true })));
+                                            setApprovalWaterMeter(r.waterMeter || 0);
+                                            setApprovalElecMeter(r.electricityMeter || 0);
+                                            setApprovalDeposit(r.deposit || utilityRates.roomDeposit || 0);
                                         }
                                     }}
                                     className="w-full bg-brand-bg border border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-white outline-none focus:border-brand-orange-500/50 transition-all appearance-none text-center"
@@ -1530,15 +1621,33 @@ export default function ApartmentSettings({ user }) {
                             {approvalRoom && (
                                 <>
                                     {/* Summary Row */}
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-3 gap-3">
                                         <div className="bg-brand-bg/50 p-4 rounded-2xl border border-white/5">
                                             <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest mb-1">ค่าเช่าหลัก</p>
-                                            <p className="text-xl font-black text-white">{approvalRoom.price?.toLocaleString() || utilityRates.baseRent?.toLocaleString()} <span className="text-xs font-bold text-brand-gray-500">บ.</span></p>
+                                            <p className="text-xl font-black text-white">{(approvalRoom.price || utilityRates.baseRent || 0).toLocaleString()} <span className="text-xs font-bold text-brand-gray-500">บ.</span></p>
+                                        </div>
+                                        <div className="bg-brand-bg/50 p-4 rounded-2xl border border-white/5">
+                                            <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest mb-1">ค่ามัดจำ</p>
+                                            <p className="text-xl font-black text-brand-orange-500">{(parseFloat(approvalDeposit) || 0).toLocaleString()} <span className="text-xs font-bold text-brand-orange-500/60">บ.</span></p>
                                         </div>
                                         <div className="bg-brand-bg/50 p-4 rounded-2xl border border-white/5">
                                             <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest mb-1">ชั้นที่พัก</p>
                                             <p className="text-xl font-black text-white">{approvalRoom.floor} <span className="text-xs font-bold text-brand-gray-500">FL.</span></p>
                                         </div>
+                                    </div>
+
+                                    {/* Deposit Input */}
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest block ml-1 flex items-center gap-1">
+                                            <CreditCard className="w-3 h-3 text-brand-orange-500" /> ค่ามัดจำ (บาท)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={approvalDeposit}
+                                            onChange={(e) => setApprovalDeposit(e.target.value)}
+                                            className="w-full bg-brand-bg rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center"
+                                            placeholder="0"
+                                        />
                                     </div>
 
                                     {/* Utilities Info */}
@@ -1550,6 +1659,34 @@ export default function ApartmentSettings({ user }) {
                                         <div className="flex items-center gap-2">
                                             <Droplets className="w-3 h-3 text-blue-500" />
                                             <span className="text-[10px] font-bold text-brand-gray-300 uppercase">ค่าน้ำ {utilityRates.water} บ.</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Initial Meters */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest block ml-1 flex items-center gap-1">
+                                                <Zap className="w-3 h-3 text-yellow-500" /> เลขมิเตอร์ไฟล่าสุด
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={approvalElecMeter}
+                                                onChange={(e) => setApprovalElecMeter(e.target.value)}
+                                                className="w-full bg-brand-bg rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center"
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest block ml-1 flex items-center gap-1">
+                                                <Droplets className="w-3 h-3 text-blue-500" /> เลขมิเตอร์น้ำล่าสุด
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={approvalWaterMeter}
+                                                onChange={(e) => setApprovalWaterMeter(e.target.value)}
+                                                className="w-full bg-brand-bg rounded-xl px-4 py-2.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-center"
+                                                placeholder="0"
+                                            />
                                         </div>
                                     </div>
 
@@ -1625,16 +1762,44 @@ export default function ApartmentSettings({ user }) {
                                     )}
 
                                     {/* Total Estimation */}
-                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10 flex justify-between items-center">
-                                        <div>
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                                        <div className="flex justify-between items-center mb-3">
                                             <p className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-widest">ยอดรวมรายเดือนประมาณการ</p>
                                             <p className="text-[9px] text-brand-gray-500 italic">(ไม่รวมค่าน้ำ-ไฟตามจริง)</p>
                                         </div>
-                                        <div className="text-right">
-                                            <p className="text-2xl font-black text-brand-orange-500">
-                                                {((approvalRoom.price || utilityRates.baseRent || 0) + approvalExpenses.filter(e => e.active).reduce((sum, e) => sum + e.amount, 0)).toLocaleString()}
-                                                <span className="text-xs font-bold ml-1.5 uppercase">บาท</span>
-                                            </p>
+                                        {/* ค่าเช่าห้อง */}
+                                        <div className="flex justify-between items-center py-1.5">
+                                            <span className="text-xs text-brand-gray-400">ค่าเช่าห้อง</span>
+                                            <span className="text-sm font-bold text-white">{(approvalRoom.price || utilityRates.baseRent || 0).toLocaleString()} บ.</span>
+                                        </div>
+                                        {/* ค่าบริการที่เปิดแล้ว */}
+                                        {approvalExpenses.filter(e => e.active).map((e, i) => (
+                                            <div key={i} className="flex justify-between items-center py-1">
+                                                <span className="text-xs text-brand-gray-500">{e.name}</span>
+                                                <span className="text-xs font-bold text-brand-orange-400">{e.amount.toLocaleString()} บ.</span>
+                                            </div>
+                                        ))}
+                                        {/* Deposit line */}
+                                        {(parseFloat(approvalDeposit) || 0) > 0 && (
+                                            <div className="flex justify-between items-center py-1">
+                                                <span className="text-xs text-brand-gray-500">ค่ามัดจำ (ชำระครั้งแรก)</span>
+                                                <span className="text-xs font-bold text-brand-orange-400">{(parseFloat(approvalDeposit) || 0).toLocaleString()} บ.</span>
+                                            </div>
+                                        )}
+                                        <div className="border-t border-white/10 mt-2 pt-2 flex justify-between items-center">
+                                            <span className="text-xs font-bold text-brand-gray-400 uppercase">รวม</span>
+                                            <div className="text-right">
+                                                <p className="text-2xl font-black text-brand-orange-500">
+                                                    {((approvalRoom.price || utilityRates.baseRent || 0) +
+                                                        approvalExpenses
+                                                            .filter(e => e.active)
+                                                            .reduce((sum, e) => sum + e.amount, 0) +
+                                                        (parseFloat(approvalDeposit) || 0)
+                                                    ).toLocaleString()}
+                                                    <span className="text-xs font-bold ml-1.5 uppercase">บาท</span>
+                                                </p>
+                                                <p className="text-[9px] text-brand-gray-500 italic mt-0.5">(รวมค่ามัดจำ)</p>
+                                            </div>
                                         </div>
                                     </div>
                                 </>
@@ -1655,7 +1820,8 @@ export default function ApartmentSettings({ user }) {
                         </div>
                     </div>
                 </div>
-            )}
-        </MainLayout>
+            )
+            }
+        </MainLayout >
     );
 }

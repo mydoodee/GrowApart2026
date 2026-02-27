@@ -10,18 +10,21 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import ResetPassword from "./pages/ResetPassword";
-import ApartmentSettings from "./pages/ApartmentSettings";
-import RoomManagement from "./pages/RoomManagement";
-import BuildingPicker from "./pages/BuildingPicker";
-import TenantDashboard from "./pages/TenantDashboard";
-import TenantJoin from "./pages/TenantJoin";
-import StaffJoin from "./pages/StaffJoin";
-import TenantManagement from "./pages/TenantManagement";
-import TenantJoinGeneral from "./pages/TenantJoinGeneral";
-import TenantLogin from "./pages/TenantLogin";
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import ResetPassword from './pages/ResetPassword';
+import ApartmentSettings from './pages/ApartmentSettings';
+import RoomManagement from './pages/RoomManagement';
+import BuildingPicker from './pages/BuildingPicker';
+import TenantDashboard from './pages/TenantDashboard';
+import TenantJoin from './pages/TenantJoin';
+import StaffJoin from './pages/StaffJoin';
+import TenantManagement from './pages/TenantManagement';
+import TenantHistory from './pages/TenantHistory';
+import TenantJoinGeneral from './pages/TenantJoinGeneral';
+import TenantLogin from './pages/TenantLogin';
+import MeterCollection from './pages/MeterCollection';
+import ContractManagement from './pages/ContractManagement';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ user, allowedContext, children }) => {
@@ -172,6 +175,24 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        <Route path="/tenant-history" element={
+          <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
+            <TenantHistory user={user} />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/meters" element={
+          <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
+            <MeterCollection user={user} />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/contracts" element={
+          <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
+            <ContractManagement user={user} />
+          </ProtectedRoute>
+        } />
 
         {/* Join Routes */}
         <Route
