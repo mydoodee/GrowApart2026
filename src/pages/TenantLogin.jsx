@@ -94,7 +94,17 @@ export default function TenantLogin({ user }) {
         authEmail = `${cleanPhone}@growapart.system`;
       }
 
-      await signInWithEmailAndPassword(auth, authEmail, password);
+      const userCredential = await signInWithEmailAndPassword(auth, authEmail, password);
+
+      // Check role
+      const docRef = doc(db, "users", userCredential.user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists() && docSnap.data().role !== "tenant") {
+        await auth.signOut();
+        throw new Error("บัญชีนี้เป็นบัญชีผู้ดูแล/เจ้าของ กรุณาเข้าสู่ระบบผ่านหน้า Owner Portal");
+      }
+
       localStorage.setItem("loginContext", "tenant");
       navigate("/tenant-dashboard", { replace: true });
     } catch (err) {
@@ -118,7 +128,13 @@ export default function TenantLogin({ user }) {
       const result = await signInWithPopup(auth, provider);
       const docRef = doc(db, "users", result.user.uid);
       const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) {
+
+      if (docSnap.exists()) {
+        if (docSnap.data().role !== "tenant") {
+          await auth.signOut();
+          throw new Error("บัญชีนี้เป็นบัญชีผู้ดูแล/เจ้าของ กรุณาเข้าสู่ระบบผ่านหน้า Owner Portal");
+        }
+      } else {
         await setDoc(docRef, {
           name: result.user.displayName || "Tenant",
           email: result.user.email,
@@ -126,11 +142,12 @@ export default function TenantLogin({ user }) {
           createdAt: serverTimestamp(),
         });
       }
+
       localStorage.setItem("loginContext", "tenant");
       navigate("/tenant-dashboard", { replace: true });
     } catch (err) {
       console.error(err);
-      showToast("การเข้าสู่ระบบด้วย Google ล้มเหลว", "error");
+      showToast(err.message || "การเข้าสู่ระบบด้วย Google ล้มเหลว", "error");
     }
     setLoading(false);
   };

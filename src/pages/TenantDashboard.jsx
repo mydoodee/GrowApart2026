@@ -6,11 +6,12 @@ import { collection, query, where, getDocs, doc, getDoc, onSnapshot, addDoc, ser
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage2 } from '../firebase';
 import {
-    LogOut, Home, MessageSquare, CreditCard, User,
-    Bell, Settings, LayoutGrid, ChevronRight, ChevronLeft, CheckCircle2,
-    Clock, AlertCircle, MapPin, Building, Wallet, CircleUser, ArrowUpRight, Activity, Zap, Droplets,
-    Wind, Tv, Wifi, Bed, Shirt, Thermometer, Snowflake, Refrigerator, Fan, Box, Camera, Key, ShieldCheck, X,
-    Printer, Banknote, Receipt, FileText, Calendar, List, Download, Info
+    LogOut, Home, MessageSquare, CreditCard, User, CheckCircle2,
+    Activity, CircleUser, ChevronRight, ChevronLeft, X, Phone, Mail, Building, Bell,
+    ArrowUpRight, Printer, History, Banknote, Receipt, Wallet, Zap, Droplets,
+    FileText, Calendar, List, Download, Info, Snowflake, Fan,
+    Bed, Shirt, Thermometer, Refrigerator, Tv, Wifi, LayoutGrid, Settings,
+    Clock, AlertCircle
 } from 'lucide-react';
 import Toast, { useToast } from '../components/Toast';
 import ProfileModal from '../components/ProfileModal';
@@ -21,6 +22,8 @@ export default function TenantDashboard({ user }) {
     const [loading, setLoading] = useState(true);
     const [myRooms, setMyRooms] = useState([]);
     const [hasPendingRequest, setHasPendingRequest] = useState(false);
+    const [historyGroups, setHistoryGroups] = useState([]);
+    const [isHistoryMode, setIsHistoryMode] = useState(false);
     const [activeTab, setActiveTab] = useState('bills');
     const [apartmentDetails, setApartmentDetails] = useState({});
     const [maintenanceRequests, setMaintenanceRequests] = useState([]);
@@ -38,6 +41,9 @@ export default function TenantDashboard({ user }) {
     const [selectedMonths, setSelectedMonths] = useState(new Set());
     const [billViewMode, setBillViewMode] = useState('calendar'); // 'calendar' or 'list'
     const [roomSubTab, setRoomSubTab] = useState('expenses'); // 'expenses' or 'contract'
+    const [selectedPayment, setSelectedPayment] = useState(null);
+    const [showPrintPreview, setShowPrintPreview] = useState(false);
+    const [printData, setPrintData] = useState(null);
     const paymentPrintRef = useRef(null);
 
     // Profile Edit State
@@ -59,7 +65,7 @@ export default function TenantDashboard({ user }) {
         const hour = new Date().getHours();
         if (hour < 12) return 'สวัสดียามเช้า';
         if (hour < 17) return 'สวัสดียามบ่าย';
-        if (hour < 20) return 'สวัสดียามเย็น';
+        if (hour < 20) return 'สวัสดียามค่ำคืน';
         return 'สวัสดียามค่ำคืน';
     };
 
@@ -68,6 +74,38 @@ export default function TenantDashboard({ user }) {
             setLoading(false);
             return;
         }
+
+        // Check history for Option B
+        const checkHistory = async () => {
+            try {
+                const histQ = query(
+                    collection(db, 'tenantHistory'),
+                    where('tenantId', '==', user.uid)
+                );
+                const histSnap = await getDocs(histQ);
+                if (!histSnap.empty) {
+                    const history = histSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+                        .sort((a, b) => b.movedOutAt?.seconds - a.movedOutAt?.seconds);
+                    setHistoryGroups(history);
+                    setIsHistoryMode(true);
+
+                    // Fetch details for historical apartments
+                    for (const h of history) {
+                        if (h.apartmentId) {
+                            const aptRef = doc(db, 'apartments', h.apartmentId);
+                            const aptSnap = await getDoc(aptRef);
+                            if (aptSnap.exists()) {
+                                setApartmentDetails(prev => ({ ...prev, [h.apartmentId]: aptSnap.data() }));
+                            }
+                        }
+                    }
+                } else {
+                    setIsHistoryMode(false);
+                }
+            } catch (err) {
+                console.error("Error checking history", err);
+            }
+        };
 
         // 1. Listen for rooms where this user is the tenant
         const roomsQ = query(collection(db, 'rooms'), where('tenantId', '==', user.uid));
@@ -84,22 +122,25 @@ export default function TenantDashboard({ user }) {
             setMyRooms(roomsData);
 
             if (roomsData.length > 0) {
-                // Fetch apartment details if they exist
-                const aptInfo = { ...apartmentDetails };
+                // Active tenant
+                setIsHistoryMode(false);
+                // Fetch apartment details if they exist in a reactive way
                 for (const id of aptIds) {
-                    if (!aptInfo[id]) {
-                        const aptRef = doc(db, 'apartments', id);
-                        const aptSnap = await getDoc(aptRef);
-                        if (aptSnap.exists()) {
-                            aptInfo[id] = aptSnap.data();
-                        }
+                    const aptRef = doc(db, 'apartments', id);
+                    const aptSnap = await getDoc(aptRef);
+                    if (aptSnap.exists()) {
+                        setApartmentDetails(prev => ({
+                            ...prev,
+                            [id]: aptSnap.data()
+                        }));
                     }
                 }
-                setApartmentDetails(aptInfo);
                 setHasPendingRequest(false); // If has rooms, no need to show pending
             } else {
-                // If no rooms, start listening for pending requests
+                // Not an active tenant, check for history or pending request
+                setActiveTab('dashboard');
                 setupRequestSubscriber();
+                checkHistory();
             }
             setLoading(false);
         }, (error) => {
@@ -119,9 +160,10 @@ export default function TenantDashboard({ user }) {
             );
 
             unsubscribeRequests = onSnapshot(reqQ, (snap) => {
+                console.log("[TenantDashboard] Pending requests listener fired. Found:", !snap.empty);
                 setHasPendingRequest(!snap.empty);
             }, (error) => {
-                console.warn("Error listening to requests", error);
+                console.warn("[TenantDashboard] Error listening to requests", error);
             });
         };
         setupRequestSubscriber();
@@ -329,6 +371,300 @@ export default function TenantDashboard({ user }) {
         printWindow.onload = () => { printWindow.print(); };
     };
 
+    const handlePrintBill = (payment) => {
+        setPrintData(payment);
+        setShowPrintPreview(true);
+    };
+
+    const executePrint = () => {
+        const payment = printData;
+        const apt = apartmentDetails[payment.apartmentId];
+        const printWindow = window.open('', '_blank');
+        const mIdx = parseInt(payment.month.split('-')[1]) - 1;
+        const thMonthsFull = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+        const monthStr = `${thMonthsFull[mIdx]} ${parseInt(payment.month.split('-')[0]) + 543}`;
+
+        const rows = [
+            `<tr>
+                <td class="item-label">ค่าเช่าห้อง</td>
+                <td class="item-desc">-</td>
+                <td class="item-amount">${(payment.details?.rent || 0).toLocaleString()} ฿</td>
+            </tr>`
+        ];
+
+        if (payment.details?.electricity) {
+            rows.push(`<tr>
+                <td class="item-label">ค่าไฟฟ้า</td>
+                <td class="item-desc">${payment.details.electricity.old} - ${payment.details.electricity.new} (${payment.details.electricity.units} หน่วย)</td>
+                <td class="item-amount">${(payment.details.electricity.amount || 0).toLocaleString()} ฿</td>
+            </tr>`);
+        }
+        if (payment.details?.water) {
+            rows.push(`<tr>
+                <td class="item-label">ค่าน้ำ</td>
+                <td class="item-desc">${payment.details.water.old} - ${payment.details.water.new} (${payment.details.water.units} หน่วย)</td>
+                <td class="item-amount">${(payment.details.water.amount || 0).toLocaleString()} ฿</td>
+            </tr>`);
+        }
+        (payment.details?.fixedExpenses || []).forEach(ex => {
+            rows.push(`<tr>
+                <td class="item-label">${ex.name}</td>
+                <td class="item-desc">-</td>
+                <td class="item-amount">${(ex.amount || 0).toLocaleString()} ฿</td>
+            </tr>`);
+        });
+
+        const qrCodeHtml = payment.status !== 'paid' && apt?.bankDetails?.promptpay
+            ? `<div class="qr-section">
+                <div class="qr-label">สแกนเพื่อชำระเงิน (PromptPay)</div>
+                <div class="qr-container">
+                    <img src="https://promptpay.io/${apt.bankDetails.promptpay}/${payment.amount}.png" />
+                </div>
+                <div class="qr-footer">
+                    <strong>${apt?.bankDetails?.accountName || 'พร้อมเพย์'}</strong><br/>
+                    <span>${apt.bankDetails.promptpay}</span>
+                </div>
+               </div>`
+            : '';
+
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>GrowApart Invoice - ห้อง \${payment.roomNumber}</title>
+                <style>
+                    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&family=Inter:wght@400;600;800&display=swap');
+                    
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    
+                    body { 
+                        font-family: 'Sarabun', 'Inter', sans-serif; 
+                        background: #fff; 
+                        padding: 20px; 
+                        color: #1e293b; 
+                        line-height: 1.4;
+                        display: flex;
+                        justify-content: center;
+                    }
+                    
+                    .receipt {
+                        width: 100%;
+                        max-width: 400px;
+                        border-radius: 0;
+                        padding: 10px;
+                    }
+                    
+                    header {
+                        padding: 20px 0;
+                        text-align: center;
+                        border-bottom: 2px dashed #e2e8f0;
+                        margin-bottom: 20px;
+                    }
+                    
+                    .apt-name {
+                        font-size: 24px;
+                        font-weight: 800;
+                        color: #000;
+                        margin-bottom: 4px;
+                    }
+                    
+                    .title {
+                        font-size: 14px;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        color: #64748b;
+                        letter-spacing: 1px;
+                    }
+                    
+                    .info-section {
+                        padding-bottom: 20px;
+                        border-bottom: 1px dashed #e2e8f0;
+                        margin-bottom: 20px;
+                    }
+                    
+                    .info-row {
+                        margin-bottom: 12px;
+                    }
+                    
+                    .info-label {
+                        display: block;
+                        font-size: 11px;
+                        font-weight: 800;
+                        color: #94a3b8;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        margin-bottom: 2px;
+                    }
+                    
+                    .info-value {
+                        font-size: 16px;
+                        font-weight: 700;
+                        color: #1e293b;
+                    }
+                    
+                    .status-value {
+                        padding: 2px 8px;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 800;
+                    }
+                    .status-paid { color: #166534; }
+                    .status-pending { color: #ea580c; }
+                    
+                    .items-section {
+                        margin-bottom: 20px;
+                    }
+                    
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                    }
+                    
+                    th {
+                        text-align: left;
+                        font-size: 11px;
+                        font-weight: 800;
+                        color: #94a3b8;
+                        text-transform: uppercase;
+                        padding-bottom: 10px;
+                        border-bottom: 1px solid #f1f5f9;
+                    }
+                    
+                    td {
+                        padding: 10px 0;
+                        vertical-align: top;
+                    }
+                    
+                    .item-label { font-size: 14px; font-weight: 700; color: #334155; }
+                    .item-desc { font-size: 11px; color: #94a3b8; font-weight: 500; display: block; }
+                    .item-amount { text-align: right; font-size: 14px; font-weight: 700; color: #1e293b; }
+                    
+                    .total-section {
+                        margin-top: 10px;
+                        padding: 20px;
+                        background: #f8fafc;
+                        border-radius: 12px;
+                        text-align: center;
+                        border: 1px solid #f1f5f9;
+                    }
+                    
+                    .total-label { 
+                        font-size: 20px; 
+                        font-weight: 900; 
+                        color: #1e293b; 
+                        display: block;
+                        line-height: 1;
+                        margin-bottom: 4px;
+                    }
+                    .total-value { 
+                        font-size: 44px; 
+                        font-weight: 900; 
+                        color: #000; 
+                        font-family: 'Inter', sans-serif; 
+                        letter-spacing: -2px;
+                        line-height: 1;
+                    }
+                    .total-unit { 
+                        font-size: 18px; 
+                        font-weight: 800; 
+                        color: #64748b;
+                        margin-left: 5px;
+                    }
+                    
+                    .qr-section {
+                        margin: 20px 0;
+                        padding: 20px;
+                        border-radius: 20px;
+                        text-align: center;
+                        border: 2px dashed #f1f5f9;
+                    }
+                    
+                    .qr-label { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 15px; }
+                    .qr-container { padding: 10px; display: inline-block; }
+                    .qr-container img { width: 140px; height: 140px; display: block; }
+                    .qr-footer { margin-top: 10px; font-size: 14px; font-weight: 700; color: #1e293b; }
+                    
+                    footer {
+                        padding: 20px 0;
+                        text-align: center;
+                        border-top: 1px dashed #e2e8f0;
+                        margin-top: 20px;
+                    }
+                    
+                    .thankyou { font-size: 14px; font-weight: 800; color: #475569; margin-bottom: 4px; }
+                    .timestamp { font-size: 11px; font-weight: 500; color: #94a3b8; }
+                    
+                    @media print {
+                        body { background: white; padding: 0; }
+                        .receipt { box-shadow: none; border: none; max-width: 100%; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="receipt">
+                    <header>
+                        <div class="apt-name">\${apt?.general?.name || ''}</div>
+                        <div class="title">ใบแจ้งหนี้ประจำเดือน</div>
+                    </header>
+                    
+                    <div class="info-section">
+                        <div class="info-row">
+                            <span class="info-label">ห้อง</span>
+                            <span class="info-value">\${payment.roomNumber}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">รอบบิล</span>
+                            <span class="info-value">\${monthStr}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">สถานะ</span>
+                            <span class="info-value status-\${payment.status}">
+                                \${payment.status === 'paid' ? 'ชำระแล้ว' : 'รอการชำระ'}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="items-section">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>รายการ / รายละเอียด</th>
+                                    <th style="text-align:right;">จำนวนเงิน</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                \${rows.join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="total-section">
+                        <span class="total-label">รวมทั้งสิ้น</span>
+                        <span class="total-value">\${payment.amount.toLocaleString()}</span>
+                        <span class="total-unit">บาท</span>
+                    </div>
+                    
+                    \${qrCodeHtml}
+                    
+                    <footer>
+                        <p class="thankyou">ขอบคุณที่ใช้บริการ</p>
+                        <p class="timestamp">ออกโดยระบบ GrowApart เมื่อ \${new Date().toLocaleString('th-TH')}</p>
+                    </footer>
+                </div>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        setTimeout(() => {
+            printWindow.onload = () => { printWindow.print(); };
+            if (printWindow.document.readyState === 'complete') {
+                printWindow.print();
+            }
+        }, 500);
+    };
+
     if (loading) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-brand-bg">
@@ -340,6 +676,7 @@ export default function TenantDashboard({ user }) {
     const NavItems = [
         { id: 'bills', icon: <Wallet className="w-5 h-5" />, label: 'บิลค่าเช่า' },
         { id: 'dashboard', icon: <Building className="w-5 h-5" />, label: 'ห้องเช่า' },
+        { id: 'history', icon: <History className="w-5 h-5" />, label: 'ประวัติ' },
         { id: 'maintenance', icon: <Activity className="w-5 h-5" />, label: 'แจ้งซ่อม' },
         { id: 'profile', icon: <CircleUser className="w-5 h-5" />, label: 'โปรไฟล์' },
     ];
@@ -397,19 +734,52 @@ export default function TenantDashboard({ user }) {
                     <div className="space-y-4 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
 
                         {myRooms.length === 0 ? (
-                            <div className="bg-brand-card/50 p-8 rounded-2xl text-center border border-white/5 backdrop-blur-sm relative overflow-hidden group">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-brand-orange-500/5 rounded-bl-[4rem] group-hover:scale-110 transition-transform duration-700"></div>
-                                <div className="w-16 h-16 bg-brand-orange-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 text-brand-orange-500">
-                                    {hasPendingRequest ? <Clock className="w-8 h-8 animate-pulse" /> : <AlertCircle className="w-8 h-8" />}
+                            <div className="space-y-4">
+                                <div className="bg-brand-card/50 p-8 rounded-2xl text-center border border-white/5 backdrop-blur-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-brand-orange-500/5 rounded-bl-[4rem] group-hover:scale-110 transition-transform duration-700"></div>
+                                    <div className="w-16 h-16 bg-brand-orange-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 text-brand-orange-500">
+                                        {hasPendingRequest ? <Clock className="w-8 h-8 animate-pulse" /> : <AlertCircle className="w-8 h-8" />}
+                                    </div>
+                                    <h2 className="text-white font-semibold text-xl mb-2">
+                                        {hasPendingRequest ? 'กำลังรอดำเนินการ' : 'ไม่พบข้อมูลห้องพัก'}
+                                    </h2>
+                                    <p className="text-brand-gray-500 text-sm font-normal leading-relaxed max-w-[240px] mx-auto">
+                                        {hasPendingRequest
+                                            ? 'คำขอร่วมหอพักของคุณส่งไปแล้ว กรุณารอเจ้าของหอพักตรวจสอบข้อมูลครับ'
+                                            : 'อีเมลของคุณยังไม่ได้ถูกผูกเข้ากับห้องพักใดๆ ในปัจจุบันครับ'}
+                                    </p>
                                 </div>
-                                <h2 className="text-white font-semibold text-xl mb-2">
-                                    {hasPendingRequest ? 'กำลังรอดำเนินการ' : 'ไม่พบข้อมูลห้องพัก'}
-                                </h2>
-                                <p className="text-brand-gray-500 text-sm font-normal leading-relaxed max-w-[240px] mx-auto">
-                                    {hasPendingRequest
-                                        ? 'คำขอร่วมหอพักของคุณส่งไปแล้ว กรุณารอเจ้าของหอพักตรวจสอบข้อมูลครับ'
-                                        : 'อีเมลของคุณยังไม่ได้ถูกผูกเข้ากับห้องพักใดๆ กรุณาติดต่อเจ้าหน้าที่หอพักครับ'}
-                                </p>
+
+                                {isHistoryMode && historyGroups.length > 0 && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2 px-1">
+                                            <History className="w-4 h-4 text-brand-orange-500" />
+                                            <h3 className="text-sm font-bold text-white uppercase tracking-wide">ประวัติการเช่า (ย้ายออกแล้ว)</h3>
+                                        </div>
+                                        {historyGroups.map((hist, idx) => (
+                                            <div key={hist.id} className="bg-brand-card/30 border border-white/8 rounded-2xl p-4 flex items-center justify-between hover:border-brand-orange-500/30 transition-all group">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-brand-gray-400">
+                                                        <Building className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-white">หอพัก {hist.apartmentName}</p>
+                                                        <p className="text-[10px] text-brand-gray-500">ห้อง {hist.roomNumber} • ชั้น {hist.floor}</p>
+                                                        <p className="text-[9px] text-brand-orange-500/60 mt-0.5">
+                                                            ย้ายออกเมื่อ {hist.movedOutAt?.toDate ? hist.movedOutAt.toDate().toLocaleDateString('th-TH') : '-'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => setActiveTab('bills')}
+                                                    className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-brand-gray-400 group-hover:bg-brand-orange-500 group-hover:text-brand-bg transition-all"
+                                                >
+                                                    <ChevronRight className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <>
@@ -471,7 +841,7 @@ export default function TenantDashboard({ user }) {
                                                 </button>
                                                 <button
                                                     onClick={() => setRoomSubTab('contract')}
-                                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${roomSubTab === 'contract' ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/10' : 'text-brand-gray-500 hover:text-white'}`}
+                                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${roomSubTab === 'contract' ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/10' : 'text-brand-gray-500 hover:text-white'} `}
                                                 >
                                                     <FileText className="w-4 h-4" /> สัญญาเช่า
                                                 </button>
@@ -503,7 +873,7 @@ export default function TenantDashboard({ user }) {
                                                             <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-2">สิ่งอำนวยความสะดวกในห้อง</h3>
                                                             <div className="grid grid-cols-2 gap-3">
                                                                 {room.amenities.filter(a => a.status).map((amenity, idx) => (
-                                                                    <div key={idx} className="bg-brand-card/20 p-4 rounded-2xl border border-white/5 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${idx * 50}ms` }}>
+                                                                    <div key={idx} className="bg-brand-card/20 p-4 rounded-2xl border border-white/5 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${idx * 50} ms` }}>
                                                                         <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center text-brand-orange-400">
                                                                             {AmenityIcons[amenity.name] || <CheckCircle2 size={18} />}
                                                                         </div>
@@ -528,7 +898,7 @@ export default function TenantDashboard({ user }) {
                                                                 <p className="text-sm font-semibold text-white">{(room.price || room.rentAmount || apt?.utilityRates?.baseRent || 0).toLocaleString()} <span className="text-xs text-brand-gray-500">฿</span></p>
                                                             </div>
                                                             {room.fixedExpenses?.filter(e => e.active).map((expense, idx) => (
-                                                                <div key={idx} className="bg-brand-card/30 p-4 rounded-2xl border border-white/5 flex items-center justify-between animate-in fade-in slide-in-from-left-2 duration-300" style={{ animationDelay: `${idx * 100}ms` }}>
+                                                                <div key={idx} className="bg-brand-card/30 p-4 rounded-2xl border border-white/5 flex items-center justify-between animate-in fade-in slide-in-from-left-2 duration-300" style={{ animationDelay: `${idx * 100} ms` }}>
                                                                     <div className="flex items-center gap-3">
                                                                         <div className="w-8 h-8 bg-white/5 rounded-xl flex items-center justify-center text-brand-gray-400">
                                                                             <Activity size={16} />
@@ -726,7 +1096,7 @@ export default function TenantDashboard({ user }) {
                                 const thMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
                                 const thMonthsFull = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
                                 const now = new Date();
-                                const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                                const currentMonthKey = `${now.getFullYear()} -${String(now.getMonth() + 1).padStart(2, '0')} `;
 
                                 // Build map: monthKey -> payment
                                 const paymentMap = {};
@@ -745,7 +1115,7 @@ export default function TenantDashboard({ user }) {
                                 const yearPayments = payments.filter(p => {
                                     if (p.type === 'first_bill') return false;
                                     if (!p.month) return false;
-                                    return p.month.startsWith(`${calendarYear}-`);
+                                    return p.month.startsWith(`${calendarYear} -`);
                                 });
 
                                 // Include first bill if paid in this calendar year
@@ -785,13 +1155,13 @@ export default function TenantDashboard({ user }) {
                                                 <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
                                                     <button
                                                         onClick={() => setBillViewMode('calendar')}
-                                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 ${billViewMode === 'calendar' ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/10' : 'text-brand-gray-500 hover:text-white'}`}
+                                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 ${billViewMode === 'calendar' ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/10' : 'text-brand-gray-500 hover:text-white'} `}
                                                     >
                                                         <LayoutGrid className="w-3 h-3" /> ปฏิทิน
                                                     </button>
                                                     <button
                                                         onClick={() => setBillViewMode('list')}
-                                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 ${billViewMode === 'list' ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/10' : 'text-brand-gray-500 hover:text-white'}`}
+                                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 ${billViewMode === 'list' ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/10' : 'text-brand-gray-500 hover:text-white'} `}
                                                     >
                                                         <List className="w-3 h-3" /> รายการ
                                                     </button>
@@ -825,10 +1195,10 @@ export default function TenantDashboard({ user }) {
                                         </div>
 
                                         {/* Yearly / Selected Summary Card */}
-                                        <div className={`rounded-2xl border p-4 transition-all ${selectedMonths.size > 0 ? 'bg-brand-orange-500/5 border-brand-orange-500/20' : 'bg-brand-card/40 border-white/8'}`}>
+                                        <div className={`rounded-2xl border p-4 transition-all ${selectedMonths.size > 0 ? 'bg-brand-orange-500/5 border-brand-orange-500/20' : 'bg-brand-card/40 border-white/8'} `}>
                                             <div className="flex items-center justify-between mb-3">
                                                 <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-wider">
-                                                    {selectedMonths.size > 0 ? `เลือก ${selectedMonths.size} เดือน` : `รวมทั้งปี ${calendarYear + 543}`}
+                                                    {selectedMonths.size > 0 ? `เลือก ${selectedMonths.size} เดือน` : `รวมทั้งปี ${calendarYear + 543} `}
                                                 </p>
                                                 {selectedMonths.size > 0 && (
                                                     <button
@@ -839,11 +1209,29 @@ export default function TenantDashboard({ user }) {
                                                     </button>
                                                 )}
                                             </div>
-                                            <div className="flex items-baseline gap-2">
-                                                <span className={`text-3xl font-black tracking-tight ${selectedMonths.size > 0 ? 'text-brand-orange-500' : 'text-white'}`}>
-                                                    {(selectedMonths.size > 0 ? selectedTotal : yearTotal).toLocaleString()}
-                                                </span>
-                                                <span className="text-sm font-medium text-brand-gray-500">บาท</span>
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex items-baseline gap-2">
+                                                    <span className={`text-3xl font-black tracking-tight ${selectedMonths.size > 0 ? 'text-brand-orange-500' : 'text-white'} `}>
+                                                        {(selectedMonths.size > 0 ? selectedTotal : yearTotal).toLocaleString()}
+                                                    </span>
+                                                    <span className="text-sm font-medium text-brand-gray-500">บาท</span>
+                                                </div>
+                                                {selectedMonths.size === 1 && (() => {
+                                                    const mkey = [...selectedMonths][0];
+                                                    const pay = paymentMap[mkey];
+                                                    if (!pay) return null;
+                                                    return (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handlePrintBill(pay);
+                                                            }}
+                                                            className="ml-auto flex items-center gap-2 px-3 py-2 bg-brand-orange-500/10 hover:bg-brand-orange-500/20 border border-brand-orange-500/20 rounded-xl text-[10px] font-bold text-brand-orange-500 transition-all active:scale-95 shadow-sm"
+                                                        >
+                                                            <Printer className="w-3.5 h-3.5" /> พิมพ์บิล
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                             {!paymentsLoading && (
                                                 <div className="flex items-center gap-3 mt-2">
@@ -920,7 +1308,7 @@ export default function TenantDashboard({ user }) {
                                                             key={monthKey}
                                                             onClick={() => !isFuture && hasPayment && toggleMonth(monthKey)}
                                                             disabled={isFuture || !hasPayment}
-                                                            className={`relative p-3.5 rounded-2xl border transition-all duration-200 text-left ${bgClass} ${borderClass} ${isCurrent ? 'ring-1 ring-brand-orange-500/40' : ''} ${isFuture ? 'opacity-30 cursor-default' : hasPayment ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'} ${isSelected ? 'ring-2 ring-brand-orange-500 shadow-lg shadow-brand-orange-500/10' : ''}`}
+                                                            className={`relative p-3.5 rounded-2xl border transition-all duration-200 text-left ${bgClass} ${borderClass} ${isCurrent ? 'ring-1 ring-brand-orange-500/40' : ''} ${isFuture ? 'opacity-30 cursor-default' : hasPayment ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'} ${isSelected ? 'ring-2 ring-brand-orange-500 shadow-lg shadow-brand-orange-500/10' : ''} `}
                                                         >
                                                             {/* Selection indicator */}
                                                             {isSelected && (
@@ -934,16 +1322,16 @@ export default function TenantDashboard({ user }) {
                                                                 <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-brand-orange-500 animate-pulse" />
                                                             )}
 
-                                                            <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isCurrent ? 'text-brand-orange-400' : 'text-brand-gray-500'}`}>
+                                                            <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isCurrent ? 'text-brand-orange-400' : 'text-brand-gray-500'} `}>
                                                                 {thMonths[i]}
                                                             </p>
-                                                            <p className={`text-xs font-medium mb-2 ${isCurrent ? 'text-white' : 'text-brand-gray-400'}`}>
+                                                            <p className={`text-xs font-medium mb-2 ${isCurrent ? 'text-white' : 'text-brand-gray-400'} `}>
                                                                 {thMonthsFull[i]}
                                                             </p>
 
                                                             <div className="flex items-center gap-1.5">
                                                                 {statusIcon}
-                                                                <span className={`text-[9px] font-semibold ${statusColor}`}>
+                                                                <span className={`text-[9px] font-semibold ${statusColor} `}>
                                                                     {statusText}
                                                                 </span>
                                                             </div>
@@ -966,8 +1354,12 @@ export default function TenantDashboard({ user }) {
                                             <div className="space-y-2">
                                                 {yearPayments.length > 0 ? (
                                                     yearPayments.map((p, idx) => (
-                                                        <div key={p.id} className="bg-brand-card/50 p-4 rounded-2xl border border-white/8 flex items-center gap-3">
-                                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${p.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-400'}`}>
+                                                        <button
+                                                            key={p.id}
+                                                            onClick={() => setSelectedPayment(p)}
+                                                            className="w-full bg-brand-card/50 p-4 rounded-2xl border border-white/8 flex items-center gap-3 hover:border-brand-orange-500/30 transition-all text-left"
+                                                        >
+                                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${p.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-400'} `}>
                                                                 {p.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                                                             </div>
                                                             <div className="flex-1 min-w-0">
@@ -978,11 +1370,11 @@ export default function TenantDashboard({ user }) {
                                                             </div>
                                                             <div className="text-right shrink-0">
                                                                 <p className="text-sm font-bold text-white">{p.amount?.toLocaleString()} บ.</p>
-                                                                <span className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${p.status === 'paid' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20'}`}>
+                                                                <span className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${p.status === 'paid' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20'} `}>
                                                                     {p.status === 'paid' ? 'จ่ายแล้ว' : 'ค้าง'}
                                                                 </span>
                                                             </div>
-                                                        </div>
+                                                        </button>
                                                     ))
                                                 ) : (
                                                     <div className="bg-brand-card/20 p-8 rounded-2xl border border-dashed border-white/5 text-center">
@@ -1045,7 +1437,7 @@ export default function TenantDashboard({ user }) {
                                             <button
                                                 key={v}
                                                 onClick={() => setMaintenanceForm({ ...maintenanceForm, priority: v })}
-                                                className={`flex-1 py-2.5 rounded-xl text-xs font-medium transition-all border ${maintenanceForm.priority === v ? 'bg-brand-orange-500 text-brand-bg border-brand-orange-500 shadow-lg shadow-brand-orange-500/20' : 'bg-brand-bg/50 text-brand-gray-400 border-white/5 hover:border-white/10'}`}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-medium transition-all border ${maintenanceForm.priority === v ? 'bg-brand-orange-500 text-brand-bg border-brand-orange-500 shadow-lg shadow-brand-orange-500/20' : 'bg-brand-bg/50 text-brand-gray-400 border-white/5 hover:border-white/10'} `}
                                             >
                                                 {v}
                                             </button>
@@ -1081,7 +1473,7 @@ export default function TenantDashboard({ user }) {
                                     </div>
                                 ) : (
                                     maintenanceRequests.map((req, idx) => (
-                                        <div key={req.id} className="bg-brand-card/50 p-5 rounded-2xl border border-white/10 relative overflow-hidden group animate-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${idx * 100}ms` }}>
+                                        <div key={req.id} className="bg-brand-card/50 p-5 rounded-2xl border border-white/10 relative overflow-hidden group animate-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${idx * 100} ms` }}>
                                             <div className="flex justify-between items-start mb-3">
                                                 <div>
                                                     <h4 className="text-sm font-semibold text-white">{req.title}</h4>
@@ -1092,13 +1484,13 @@ export default function TenantDashboard({ user }) {
                                                 <span className={`text-[9px] font-medium px-2.5 py-1 rounded-full uppercase tracking-wide border ${req.status === 'pending' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/10' :
                                                     req.status === 'in-progress' ? 'bg-blue-500/10 text-blue-500 border-blue-500/10' :
                                                         'bg-emerald-500/10 text-emerald-500 border-emerald-500/10'
-                                                    }`}>
+                                                    } `}>
                                                     {req.status === 'pending' ? 'รอดำเนินการ' : req.status === 'in-progress' ? 'กำลังซ่อม' : 'เสร็จสิ้น'}
                                                 </span>
                                             </div>
                                             <p className="text-sm text-brand-gray-400 font-normal leading-relaxed mb-4 line-clamp-2">{req.description}</p>
                                             <div className="bg-brand-bg/50 px-3 py-2 rounded-xl flex items-center justify-between border border-white/5">
-                                                <span className={`text-xs font-medium ${req.priority === 'ปกติ' ? 'text-brand-gray-500' : req.priority === 'ด่วน' ? 'text-orange-400' : 'text-red-500'}`}>
+                                                <span className={`text-xs font-medium ${req.priority === 'ปกติ' ? 'text-brand-gray-500' : req.priority === 'ด่วน' ? 'text-orange-400' : 'text-red-500'} `}>
                                                     ความสำคัญ: {req.priority}
                                                 </span>
                                                 <ArrowUpRight size={14} className="text-brand-gray-700" />
@@ -1144,6 +1536,21 @@ export default function TenantDashboard({ user }) {
                                         <div className="text-left">
                                             <p className="text-sm font-medium text-white">จัดการโปรไฟล์และความปลอดภัย</p>
                                             <p className="text-xs font-normal text-brand-gray-500 mt-0.5">รูปโปรไฟล์ ชื่อ และรหัสผ่าน</p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight size={18} className="text-brand-gray-700" />
+                                </button>
+                                <button
+                                    onClick={() => navigate('/tenant-history')}
+                                    className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-all group"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-brand-gray-500 group-hover:text-brand-orange-500 transition-colors">
+                                            <History size={18} />
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-sm font-medium text-white">ประวัติการเช่า</p>
+                                            <p className="text-xs font-normal text-brand-gray-500 mt-0.5">รวมข้อมูลหอพักที่เคยพักและยอดชำระ</p>
                                         </div>
                                     </div>
                                     <ChevronRight size={18} className="text-brand-gray-700" />
@@ -1260,15 +1667,21 @@ export default function TenantDashboard({ user }) {
                     {NavItems.map(item => (
                         <button
                             key={item.id}
-                            onClick={() => setActiveTab(item.id)}
+                            onClick={() => {
+                                if (item.id === 'history') {
+                                    navigate('/tenant-history');
+                                } else {
+                                    setActiveTab(item.id);
+                                }
+                            }}
                             className={`flex flex-col items-center gap-1.5 p-2 transition-all relative ${activeTab === item.id ? 'text-brand-orange-500' : 'text-brand-gray-600 hover:text-brand-gray-300'
-                                }`}
+                                } `}
                         >
                             <div className={`p-2 rounded-2xl transition-all ${activeTab === item.id ? 'bg-brand-orange-500/20 shadow-lg shadow-brand-orange-500/10 scale-110' : ''
-                                }`}>
+                                } `}>
                                 {item.icon}
                             </div>
-                            <span className={`text-[9px] font-medium ${activeTab === item.id ? 'opacity-100 text-brand-orange-500' : 'opacity-40'}`}>
+                            <span className={`text-[9px] font-medium ${activeTab === item.id ? 'opacity-100 text-brand-orange-500' : 'opacity-40'} `}>
                                 {item.label}
                             </span>
                             {activeTab === item.id && (
@@ -1278,6 +1691,237 @@ export default function TenantDashboard({ user }) {
                     ))}
                 </div>
             </nav>
+            {/* ── Bill Details Modal ──────────────────────── */}
+            {selectedPayment && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedPayment(null)} />
+                    <div className="relative bg-brand-card w-full max-w-md rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-bold text-white">รายละเอียดบิล</h3>
+                                <p className="text-[10px] text-brand-gray-500 uppercase tracking-widest font-bold">
+                                    {new Date(selectedPayment.month + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handlePrintBill(selectedPayment)}
+                                    className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-brand-orange-500 transition-colors"
+                                    title="พิมพ์บิล"
+                                >
+                                    <Printer size={16} />
+                                </button>
+                                <button onClick={() => setSelectedPayment(null)} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-brand-gray-400">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-brand-gray-400 font-medium tracking-tight">ค่าเช่าห้อง</span>
+                                    <span className="text-white font-bold">{(selectedPayment.details?.rent || 0).toLocaleString()} บ.</span>
+                                </div>
+                                {selectedPayment.details?.electricity && (
+                                    <div className="flex justify-between items-start text-sm">
+                                        <div className="flex flex-col">
+                                            <span className="text-brand-gray-400 font-medium tracking-tight">ค่าไฟฟ้า ({selectedPayment.details.electricity.units} หน่วย)</span>
+                                            <span className="text-[10px] text-brand-gray-600 font-bold">{selectedPayment.details.electricity.old} - {selectedPayment.details.electricity.new}</span>
+                                        </div>
+                                        <span className="text-white font-bold">{(selectedPayment.details.electricity.amount || 0).toLocaleString()} บ.</span>
+                                    </div>
+                                )}
+                                {selectedPayment.details?.water && (
+                                    <div className="flex justify-between items-start text-sm">
+                                        <div className="flex flex-col">
+                                            <span className="text-brand-gray-400 font-medium tracking-tight">ค่าน้ำ ({selectedPayment.details.water.units} หน่วย)</span>
+                                            <span className="text-[10px] text-brand-gray-600 font-bold">{selectedPayment.details.water.old} - {selectedPayment.details.water.new}</span>
+                                        </div>
+                                        <span className="text-white font-bold">{(selectedPayment.details.water.amount || 0).toLocaleString()} บ.</span>
+                                    </div>
+                                )}
+                                {(selectedPayment.details?.fixedExpenses || []).map((ex, idx) => (
+                                    <div key={idx} className="flex justify-between items-center text-sm">
+                                        <span className="text-brand-gray-400 font-medium tracking-tight">{ex.name}</span>
+                                        <span className="text-white font-bold">{(ex.amount || 0).toLocaleString()} บ.</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="pt-6 border-t border-white/10">
+                                <div className="flex justify-between items-end">
+                                    <span className="text-brand-gray-500 font-black italic uppercase text-xs">รวมทั้งสิ้น</span>
+                                    <div className="text-right">
+                                        <h2 className="text-3xl font-black text-brand-orange-500 leading-none">
+                                            {(selectedPayment.amount || 0).toLocaleString()}
+                                        </h2>
+                                        <span className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-widest mt-1 block">บาท</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-brand-orange-500/5 border border-brand-orange-500/10 p-4 rounded-2xl flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${selectedPayment.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-400'}`}>
+                                    {selectedPayment.status === 'paid' ? <CheckCircle2 size={20} /> : <Clock size={20} />}
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest leading-none mb-1">สถานะปัจจุบัน</p>
+                                    <p className={`text-sm font-black ${selectedPayment.status === 'paid' ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                                        {selectedPayment.status === 'paid' ? 'ชำระเงินเรียบร้อยแล้ว' : 'ยังไม่ได้ชำระเงิน'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {selectedPayment.status !== 'paid' && primaryApt?.bankDetails && (
+                                <div className="space-y-4 pt-2">
+                                    <div className="text-center">
+                                        <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest mb-3">ชำระผ่าน PromptPay</p>
+                                        <div className="bg-white p-4 rounded-2xl inline-block shadow-xl">
+                                            <QRCodeSVG
+                                                value={`https://promptpay.io/${primaryApt.bankDetails.promptpay}/${selectedPayment.amount}`}
+                                                size={160}
+                                            />
+                                        </div >
+                                    </div >
+                                </div >
+                            )
+                            }
+                        </div >
+                    </div >
+                </div >
+            )}
+            {/* ── Print Preview Modal ──────────────────────── */}
+            {
+                showPrintPreview && printData && (
+                    <div className="fixed inset-0 z-[150] bg-black/95 backdrop-blur-md overflow-y-auto">
+                        <div className="fixed inset-0" onClick={() => setShowPrintPreview(false)} />
+
+                        <div className="relative min-h-screen flex flex-col items-center justify-start p-4 py-12 pointer-events-none">
+                            <div className="relative w-full max-w-[450px] pointer-events-auto">
+                                {/* Action Buttons */}
+                                <div className="flex justify-between items-center px-1 mb-6">
+                                    <button
+                                        onClick={() => setShowPrintPreview(false)}
+                                        className="flex items-center gap-2 text-white/60 hover:text-white transition-colors bg-white/20 px-4 py-2.5 rounded-2xl backdrop-blur-md border border-white/10"
+                                    >
+                                        <X size={18} />
+                                        <span className="text-sm font-bold">ปิดหน้าต่าง</span>
+                                    </button>
+                                    <button
+                                        onClick={executePrint}
+                                        className="flex items-center gap-2 bg-brand-orange-500 hover:bg-brand-orange-400 text-brand-bg px-6 py-2.5 rounded-2xl transition-all active:scale-95 shadow-xl shadow-brand-orange-500/30"
+                                    >
+                                        <Printer size={18} />
+                                        <span className="text-sm font-black text-brand-bg uppercase">สั่งพิมพ์</span>
+                                    </button>
+                                </div>
+
+                                {/* The Receipt Preview */}
+                                <div className="bg-white rounded-[2rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+                                    {(() => {
+                                        const apt = apartmentDetails[printData.apartmentId];
+                                        const mIdx = parseInt(printData.month.split('-')[1]) - 1;
+                                        const thMonthsFull = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+                                        const monthStr = `${thMonthsFull[mIdx]} ${parseInt(printData.month.split('-')[0]) + 543}`;
+                                        const items = [
+                                            { label: 'ค่าเช่าห้อง', amount: printData.details?.rent || 0 },
+                                            ...(printData.details?.electricity ? [{
+                                                label: 'ค่าไฟฟ้า',
+                                                amount: printData.details.electricity.amount,
+                                                desc: `${printData.details.electricity.old} - ${printData.details.electricity.new} (${printData.details.electricity.units} หน่วย)`
+                                            }] : []),
+                                            ...(printData.details?.water ? [{
+                                                label: 'ค่าน้ำ',
+                                                amount: printData.details.water.amount,
+                                                desc: `${printData.details.water.old} - ${printData.details.water.new} (${printData.details.water.units} หน่วย)`
+                                            }] : []),
+                                            ...(printData.details?.fixedExpenses || []).map(ex => ({ label: ex.name, amount: ex.amount }))
+                                        ];
+
+                                        return (
+                                            <div className="p-8 text-slate-900 font-sarabun">
+                                                <div className="text-center mb-10 pb-6 border-b-2 border-dashed border-slate-100">
+                                                    <h2 className="text-2xl font-black text-brand-orange-500 mb-1">{apt?.general?.name || 'หอพัก'}</h2>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">ใบแจ้งหนี้ประจำเดือน</p>
+                                                </div>
+
+                                                <div className="space-y-4 mb-10 pb-6 border-b-2 border-dashed border-slate-100">
+                                                    <div className="flex justify-between items-end">
+                                                        <div>
+                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">เลขห้อง</p>
+                                                            <p className="text-xl font-black text-slate-900">{printData.roomNumber}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">รอบบิล</p>
+                                                            <p className="text-lg font-bold text-slate-900">{monthStr}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">สถานะการชำระ</p>
+                                                        <span className={`px-4 py-1.5 rounded-full text-xs font-black ${printData.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+                                                            {printData.status === 'paid' ? 'ชำระเงินเรียบร้อยแล้ว' : 'รอการเริ่มชำระ'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mb-10">
+                                                    <div className="flex justify-between items-center mb-4 px-1">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">รายการ / รายละเอียด</p>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">จำนวนเงิน</p>
+                                                    </div>
+                                                    <div className="space-y-4">
+                                                        {items.map((item, idx) => (
+                                                            <div key={idx} className="flex justify-between items-start">
+                                                                <div className="flex-1">
+                                                                    <p className="text-sm font-bold text-slate-800">{item.label}</p>
+                                                                    {item.desc && <p className="text-[10px] font-medium text-slate-400 mt-0.5">{item.desc}</p>}
+                                                                </div>
+                                                                <p className="text-sm font-black text-slate-900 ml-4">{item.amount.toLocaleString()} ฿</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-slate-50 rounded-3xl p-6 text-center mb-10 border border-slate-100">
+                                                    <p className="text-sm font-black text-slate-400 uppercase tracking-widest mb-2 italic">รวมทั้งสิ้น</p>
+                                                    <div className="flex items-baseline justify-center gap-1.5">
+                                                        <span className="text-5xl font-black text-slate-900 tabular-nums tracking-tighter">{printData.amount.toLocaleString()}</span>
+                                                        <span className="text-lg font-black text-slate-400 uppercase">บาท</span>
+                                                    </div>
+                                                </div>
+
+                                                {printData.status !== 'paid' && apt?.bankDetails?.promptpay && (
+                                                    <div className="text-center mb-10 p-6 rounded-[2rem] border-2 border-dashed border-slate-100">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 leading-relaxed">สแกนชำระเงินผ่าน PromptPay</p>
+                                                        <div className="bg-white p-4 rounded-[1.5rem] inline-block shadow-xl shadow-slate-200/50 mb-6">
+                                                            <QRCodeSVG
+                                                                value={`https://promptpay.io/${apt.bankDetails.promptpay}/${printData.amount}`}
+                                                                size={160}
+                                                            />
+                                                        </div>
+                                                        <p className="text-sm font-black text-slate-900">{apt.bankDetails.accountName}</p>
+                                                        <p className="text-xs font-bold text-slate-400 mt-1">{apt.bankDetails.promptpay}</p>
+                                                    </div>
+                                                )}
+
+                                                <div className="text-center pt-8 border-t-2 border-dashed border-slate-100">
+                                                    <p className="text-sm font-black text-slate-500 mb-1 italic">ขอบคุณที่ใช้บริการ</p>
+                                                    <p className="text-[9px] font-bold text-slate-300 uppercase tracking-[0.2em]">
+                                                        Issued by GrowApart • {new Date().toLocaleDateString('th-TH', {
+                                                            day: '2-digit', month: 'long', year: 'numeric',
+                                                            hour: '2-digit', minute: '2-digit'
+                                                        })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
         </div>
     );
 }
