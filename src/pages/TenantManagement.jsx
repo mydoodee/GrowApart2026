@@ -146,24 +146,32 @@ export default function TenantManagement({ user }) {
 
     // ── payments ──────────────────────────────────────────────────────────────
     useEffect(() => {
-        if (!selectedTenant || !activeAptId) return;
-        setPayments([]); setPaymentsLoading(true);
-        const fetch = async () => {
-            try {
-                const q = query(
-                    collection(db, 'payments'),
-                    where('tenantId', '==', selectedTenant.id),
-                    where('apartmentId', '==', activeAptId)
-                );
-                const snap = await getDocs(q);
-                const sorted = snap.docs
-                    .map(d => ({ id: d.id, ...d.data() }))
-                    .sort((a, b) => (b.month || '').localeCompare(a.month || ''));
-                setPayments(sorted);
-            } catch { setPayments([]); }
+        if (!selectedTenant?.id || !activeAptId) {
+            setPayments([]);
             setPaymentsLoading(false);
-        };
-        fetch();
+            return;
+        }
+
+        setPaymentsLoading(true);
+        const q = query(
+            collection(db, 'payments'),
+            where('tenantId', '==', selectedTenant.id),
+            where('apartmentId', '==', activeAptId)
+        );
+
+        const unsubscribe = onSnapshot(q, (snap) => {
+            console.log("[TenantManagement] Payment update received:", snap.docs.length);
+            const sorted = snap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => (b.month || '').localeCompare(a.month || ''));
+            setPayments(sorted);
+            setPaymentsLoading(false);
+        }, (err) => {
+            console.error("Error listening to payments:", err);
+            setPaymentsLoading(false);
+        });
+
+        return () => unsubscribe();
     }, [selectedTenant?.id, activeAptId]);
 
     // ── handlers ──────────────────────────────────────────────────────────────
