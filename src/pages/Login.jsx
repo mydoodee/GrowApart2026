@@ -65,7 +65,7 @@ export default function Login({ user }) {
       if (user && step === "LOGIN") {
         const ctx = localStorage.getItem("loginContext");
         if (ctx === "provider") {
-          navigate("/dashboard", { replace: true });
+          navigate("/picker", { replace: true });
         }
       }
     }
@@ -85,11 +85,23 @@ export default function Login({ user }) {
         ? `${email.replace(/\D/g, "")}@growapart.system`
         : email;
 
-      await signInWithEmailAndPassword(auth, loginEmail, password);
+      const userCredential = await signInWithEmailAndPassword(auth, loginEmail, password);
+
+      // Check role
+      const docRef = doc(db, "users", userCredential.user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists() && docSnap.data().role === "tenant") {
+        await auth.signOut();
+        setError("บัญชีนี้เป็นบัญชีผู้เช่า กรุณาเข้าสู่ระบบผ่านระบบสำหรับผู้เช่า");
+        setLoading(false);
+        return;
+      }
+
       localStorage.removeItem("activeApartmentId");
       localStorage.removeItem("selectedBuildingIds");
       localStorage.setItem("loginContext", "provider");
-      navigate("/dashboard", { replace: true });
+      navigate("/picker", { replace: true });
     } catch (err) {
       console.error(err);
       if (err.code === "auth/invalid-credential") {
@@ -131,7 +143,7 @@ export default function Login({ user }) {
       localStorage.removeItem("activeApartmentId");
       localStorage.removeItem("selectedBuildingIds");
       localStorage.setItem("loginContext", "provider");
-      navigate("/dashboard", { replace: true });
+      navigate("/picker", { replace: true });
     } catch (err) {
       console.error(err);
       if (err.code === "auth/email-already-in-use") {
@@ -153,18 +165,26 @@ export default function Login({ user }) {
       const result = await signInWithPopup(auth, provider);
       const docRef = doc(db, "users", result.user.uid);
       const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) {
+
+      if (docSnap.exists()) {
+        if (docSnap.data().role === "tenant") {
+          await auth.signOut();
+          setError("บัญชีนี้เป็นบัญชีผู้เช่า กรุณาเข้าสู่ระบบผ่านระบบสำหรับผู้เช่า");
+          setLoading(false);
+          return;
+        }
+      } else {
         await setDoc(docRef, {
           name: result.user.displayName || "ผู้ใช้ Google",
           email: result.user.email,
           role: "owner",
           createdAt: serverTimestamp(),
         });
+        localStorage.removeItem("activeApartmentId");
+        localStorage.removeItem("selectedBuildingIds");
+        localStorage.setItem("loginContext", "provider");
+        navigate("/picker", { replace: true });
       }
-      localStorage.removeItem("activeApartmentId");
-      localStorage.removeItem("selectedBuildingIds");
-      localStorage.setItem("loginContext", "provider");
-      navigate("/dashboard", { replace: true });
     } catch (err) {
       console.error(err);
       setError("การเข้าสู่ระบบด้วย Google ล้มเหลว");

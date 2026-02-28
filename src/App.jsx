@@ -25,22 +25,40 @@ import TenantJoinGeneral from './pages/TenantJoinGeneral';
 import TenantLogin from './pages/TenantLogin';
 import MeterCollection from './pages/MeterCollection';
 import ContractManagement from './pages/ContractManagement';
+import MonthlyBilling from './pages/MonthlyBilling';
 
 // Protected Route Wrapper
-const ProtectedRoute = ({ user, allowedContext, children }) => {
+const ProtectedRoute = ({ user, userRole, allowedContext, allowedRoles, children }) => {
   const location = useLocation();
-  const loginContext = localStorage.getItem("loginContext"); // 'provider' | 'tenant'
+  const storedContext = localStorage.getItem("loginContext");
 
   if (!user) {
     const isTenantPath = location.pathname.startsWith("/tenant-");
     return <Navigate to={isTenantPath ? "/tenant-login" : "/login"} replace />;
   }
 
-  // Redirect to the appropriate portal if context doesn't match
-  if (allowedContext && loginContext !== allowedContext) {
-    if (loginContext === "tenant")
+  // If loading user data, show nothing or a spinner
+  if (userRole === undefined || userRole === null) return null;
+
+  // Derive current context
+  let currentContext = storedContext;
+  if (!currentContext) {
+    currentContext = userRole === 'tenant' ? 'tenant' : 'provider';
+  }
+
+  // 1. Context Check (Portal mismatch)
+  if (allowedContext && currentContext !== allowedContext) {
+    if (currentContext === "tenant")
       return <Navigate to="/tenant-dashboard" replace />;
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/picker" replace />;
+  }
+
+  // 2. Role Check (Administrative access)
+  if (allowedRoles && !allowedRoles.includes(userRole)) {
+    // If they have the right context but wrong role (e.g. manager page but user is just staff with no perms)
+    // for now just redirect to their portal root
+    if (currentContext === "tenant") return <Navigate to="/tenant-dashboard" replace />;
+    return <Navigate to="/picker" replace />;
   }
 
   return children;
@@ -50,6 +68,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loginContext, setLoginContext] = useState(localStorage.getItem("loginContext"));
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -57,37 +76,50 @@ function App() {
       if (currentUser) {
         try {
           const docRef = doc(db, "users", currentUser.uid);
-          let docSnap = await getDoc(docRef);
-
+          const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             const userData = docSnap.data();
-            let currentRole = userData.role || "owner";
+            let finalRole = userData.role || "owner";
 
-            // Check apartment-specific role (e.g. staff/manager)
+            // Override with apartment-specific role if possible
             const activeAptId = localStorage.getItem("activeApartmentId");
-            if (
-              activeAptId &&
-              userData.apartmentRoles &&
-              userData.apartmentRoles[activeAptId]
-            ) {
-              currentRole = userData.apartmentRoles[activeAptId].role;
-            } else if (
-              userData.apartmentRoles &&
-              Object.keys(userData.apartmentRoles).length > 0
-            ) {
-              const firstAptId = Object.keys(userData.apartmentRoles)[0];
-              currentRole = userData.apartmentRoles[firstAptId].role;
+            if (activeAptId && userData.apartmentRoles && userData.apartmentRoles[activeAptId]) {
+              finalRole = userData.apartmentRoles[activeAptId].role;
             }
 
-            setUserRole(currentRole);
+            setUserRole(finalRole);
+            console.log("[App] User Role Loaded:", finalRole);
+
+            // Sync loginContext
+            const storedCtx = localStorage.getItem("loginContext");
+            let targetCtx = storedCtx;
+
+            if (userData.role === 'tenant') {
+              targetCtx = 'tenant';
+            } else if (userData.role === 'owner' || userData.role === 'staff') {
+              targetCtx = 'provider';
+            }
+
+            if (targetCtx && targetCtx !== storedCtx) {
+              console.log("[App] Syncing Context to:", targetCtx);
+              localStorage.setItem("loginContext", targetCtx);
+              setLoginContext(targetCtx);
+            } else if (!targetCtx && storedCtx) {
+              setLoginContext(storedCtx);
+            } else if (targetCtx) {
+              setLoginContext(targetCtx);
+            }
           } else {
-            setUserRole("owner");
+            console.warn("[App] User doc not found for UID:", currentUser.uid);
+            setUserRole(null);
           }
         } catch (error) {
-          console.error("Error fetching user role", error);
+          console.error("Error fetching user role:", error);
+          setUserRole(null);
         }
       } else {
         setUserRole(null);
+        setLoginContext(null);
       }
       setLoading(false);
     });
@@ -109,10 +141,10 @@ function App() {
           path="/"
           element={
             user ? (
-              localStorage.getItem("loginContext") === "tenant" ? (
+              loginContext === "tenant" ? (
                 <Navigate to="/tenant-dashboard" replace />
               ) : (
-                <Navigate to="/dashboard" replace />
+                <Navigate to="/picker" replace />
               )
             ) : (
               <Navigate to="/login" replace />
@@ -126,7 +158,7 @@ function App() {
         <Route
           path="/picker"
           element={
-            <ProtectedRoute user={user} allowedContext="provider">
+            <ProtectedRoute user={user} userRole={userRole} allowedContext="provider">
               <BuildingPicker user={user} />
             </ProtectedRoute>
           }
@@ -135,7 +167,7 @@ function App() {
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute user={user} allowedContext="provider">
+            <ProtectedRoute user={user} userRole={userRole} allowedContext="provider">
               <Dashboard user={user} />
             </ProtectedRoute>
           }
@@ -143,7 +175,7 @@ function App() {
         <Route
           path="/settings"
           element={
-            <ProtectedRoute user={user} allowedContext="provider">
+            <ProtectedRoute user={user} userRole={userRole} allowedContext="provider">
               <ApartmentSettings user={user} />
             </ProtectedRoute>
           }
@@ -151,7 +183,7 @@ function App() {
         <Route
           path="/rooms"
           element={
-            <ProtectedRoute user={user} allowedContext="provider">
+            <ProtectedRoute user={user} userRole={userRole} allowedContext="provider">
               <RoomManagement user={user} />
             </ProtectedRoute>
           }
@@ -161,7 +193,7 @@ function App() {
         <Route
           path="/tenant-dashboard"
           element={
-            <ProtectedRoute user={user} allowedContext="tenant">
+            <ProtectedRoute user={user} userRole={userRole} allowedContext="tenant">
               <TenantDashboard user={user} />
             </ProtectedRoute>
           }
@@ -170,14 +202,14 @@ function App() {
         <Route
           path="/tenants"
           element={
-            <ProtectedRoute user={user} allowedContext="provider">
+            <ProtectedRoute user={user} userRole={userRole} allowedContext="provider">
               <TenantManagement user={user} />
             </ProtectedRoute>
           }
         />
 
         <Route path="/tenant-history" element={
-          <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
+          <ProtectedRoute user={user} userRole={userRole}>
             <TenantHistory user={user} />
           </ProtectedRoute>
         } />
@@ -191,6 +223,12 @@ function App() {
         <Route path="/contracts" element={
           <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
             <ContractManagement user={user} />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/billing" element={
+          <ProtectedRoute user={user} userRole={userRole} allowedRoles={['owner', 'manager', 'staff']}>
+            <MonthlyBilling user={user} />
           </ProtectedRoute>
         } />
 

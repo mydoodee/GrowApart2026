@@ -99,10 +99,10 @@ export default function TenantJoin({ user, userRole }) {
                     type: 'tenant',
                     createdAt: serverTimestamp()
                 });
-                setRequestStatus('pending');
                 showToast('ส่งคำขอเข้าระบบเรียบร้อยแล้ว กรุณารอเจ้าของหออนุมัติ', 'success');
+                navigate('/tenant-dashboard', { replace: true });
             } else {
-                setRequestStatus(reqSnap.docs[0].data().status);
+                navigate('/tenant-dashboard', { replace: true });
             }
         } catch (error) {
             console.error("Join request failed:", error);
@@ -129,7 +129,7 @@ export default function TenantJoin({ user, userRole }) {
                     createdAt: serverTimestamp()
                 });
             }
-
+            localStorage.setItem('loginContext', 'tenant');
             await submitJoinRequest(currentUser);
         } catch (error) {
             console.error(error);
@@ -156,6 +156,7 @@ export default function TenantJoin({ user, userRole }) {
                 try {
                     const userCred = await signInWithEmailAndPassword(auth, authEmail, password);
                     currentUser = userCred.user;
+                    localStorage.setItem('loginContext', 'tenant');
                 } catch (err) {
                     if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
                         if (!name) {
@@ -165,6 +166,7 @@ export default function TenantJoin({ user, userRole }) {
                         }
                         const userCred = await createUserWithEmailAndPassword(auth, authEmail, password);
                         currentUser = userCred.user;
+                        localStorage.setItem('loginContext', 'tenant');
 
                         await setDoc(doc(db, 'users', currentUser.uid), {
                             name: name,
@@ -179,7 +181,9 @@ export default function TenantJoin({ user, userRole }) {
                 }
             }
 
-            await submitJoinRequest(currentUser);
+            if (currentUser) {
+                await submitJoinRequest(currentUser);
+            }
         } catch (error) {
             console.error(error);
             if (error.code === 'auth/wrong-password') showToast('รหัสผ่านไม่ถูกต้อง สำหรับบัญชีนี้', 'error');

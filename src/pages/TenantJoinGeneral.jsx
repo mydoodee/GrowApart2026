@@ -39,20 +39,31 @@ export default function TenantJoinGeneral({ user }) {
 
         const loadData = async () => {
             try {
-                const aptRef = doc(db, 'apartments', aptId);
-                const aptSnap = await getDoc(aptRef);
-                if (aptSnap.exists()) {
-                    setApartment({ id: aptSnap.id, ...aptSnap.data() });
+                let aptData = null;
+                try {
+                    const aptRef = doc(db, 'apartments', aptId);
+                    const aptSnap = await getDoc(aptRef);
+                    if (aptSnap.exists()) {
+                        aptData = { id: aptSnap.id, ...aptSnap.data() };
+                        setApartment(aptData);
+                    }
+                } catch (aptErr) {
+                    console.error("Failed to fetch apartment info:", aptErr);
+                    // Still continue so they can see the form
                 }
 
                 if (user) {
-                    const userDoc = await getDoc(doc(db, 'users', user.uid));
-                    if (userDoc.exists()) {
-                        const userData = userDoc.data();
-                        if (userData.apartmentRoles && userData.apartmentRoles[aptId]) {
-                            navigate('/tenant-dashboard', { replace: true });
-                            return;
+                    try {
+                        const userDoc = await getDoc(doc(db, 'users', user.uid));
+                        if (userDoc.exists()) {
+                            const userData = userDoc.data();
+                            if (userData.apartmentRoles && userData.apartmentRoles[aptId]) {
+                                navigate('/tenant-dashboard', { replace: true });
+                                return;
+                            }
                         }
+                    } catch (userErr) {
+                        console.error("Failed to fetch user roles:", userErr);
                     }
 
                     const reqQ = query(
@@ -61,9 +72,13 @@ export default function TenantJoinGeneral({ user }) {
                         where('apartmentId', '==', aptId),
                         where('status', '==', 'pending')
                     );
-                    const reqSnap = await getDocs(reqQ);
-                    if (!reqSnap.empty) {
-                        setRequestStatus('pending');
+                    try {
+                        const reqSnap = await getDocs(reqQ);
+                        if (!reqSnap.empty) {
+                            setRequestStatus('pending');
+                        }
+                    } catch (fetchErr) {
+                        console.error("Firestore getDocs failed:", fetchErr);
                     }
                 }
             } catch (err) {
@@ -89,8 +104,8 @@ export default function TenantJoinGeneral({ user }) {
                 type: 'tenant',
                 createdAt: serverTimestamp()
             });
-            setRequestStatus('pending');
             showToast('ส่งคำขอลงทะเบียนเรียบร้อยแล้ว กรุณารอนายตรวจอนุมัติ', 'success');
+            navigate('/tenant-dashboard', { replace: true });
         } catch (error) {
             console.error(error);
             showToast('ส่งคำขอล้มเหลว', 'error');
@@ -107,40 +122,58 @@ export default function TenantJoinGeneral({ user }) {
             if (!currentUser) {
                 let authEmail = email;
                 if (authMethod === 'phone') {
-                    if (!phone) { showToast('กรุณากรอกเบอร์โทรศัพท์', 'error'); setSubmitting(false); return; }
+                    if (!phone || phone.length < 9) { showToast('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (9-10 หลัก)', 'error'); setSubmitting(false); return; }
                     authEmail = `${phone.replace(/\D/g, '')}@growapart.system`;
+                } else {
+                    if (!email || !email.includes('@')) { showToast('กรุณากรอกอีเมลให้ถูกต้อง', 'error'); setSubmitting(false); return; }
+                    authEmail = email;
+                }
+
+                if (!password || password.length < 6) {
+                    showToast('รหัสผ่านต้องมี 6 ตัวอักษรขึ้นไป', 'error');
+                    setSubmitting(false);
+                    return;
                 }
 
                 try {
-                    const userCred = await signInWithEmailAndPassword(auth, authEmail, password);
-                    currentUser = userCred.user;
-                } catch (err) {
-                    if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-                        // Attempt registration if login fails
-                        if (!name) { showToast('กรุณากรอกชื่อ-นามสกุล', 'error'); setSubmitting(false); return; }
+                    // Try to sign in first (if account already exists)
+                    console.log("Attempting sign in:", authEmail);
+                    const userCredential = await signInWithEmailAndPassword(auth, authEmail, password);
+                    currentUser = userCredential.user;
+                    localStorage.setItem('loginContext', 'tenant');
+                } catch (signInErr) {
+                    console.log("Sign in failed:", signInErr.code, signInErr.message);
+                    // If doesn't exist, create new account
+                    if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/invalid-email') {
                         try {
-                            const userCred = await createUserWithEmailAndPassword(auth, authEmail, password);
-                            currentUser = userCred.user;
+                            const userCredential = await createUserWithEmailAndPassword(auth, authEmail, password);
+                            currentUser = userCredential.user;
+                            localStorage.setItem('loginContext', 'tenant');
+
                             await setDoc(doc(db, 'users', currentUser.uid), {
-                                name: name,
-                                email: authEmail,
+                                name: name || 'ผู้เช่า',
+                                email: authMethod === 'email' ? authEmail : '',
                                 phone: authMethod === 'phone' ? phone : '',
                                 role: 'tenant',
                                 createdAt: serverTimestamp()
                             });
-                        } catch (regErr) {
-                            if (regErr.code === 'auth/email-already-in-use') {
-                                showToast('เบอร์โทรศัพท์/อีเมลนี้มีในระบบแล้ว กรุณาล็อกอินหรือใช้รหัสผ่านที่ถูกต้อง', 'warning');
-                            } else {
-                                throw regErr;
-                            }
+                        } catch (createErr) {
+                            console.error("Create User Error:", createErr);
+                            showToast(createErr.code === 'auth/email-already-in-use' ? 'อีเมล/เบอร์โทรนี้ถูกใช้งานแล้ว' : 'สมัครสมาชิกไม่สำเร็จ', 'error');
                             setSubmitting(false);
                             return;
                         }
-                    } else throw err;
+                    } else {
+                        console.error("Sign In Error:", signInErr);
+                        showToast('รหัสผ่านไม่ถูกต้อง หรือพบข้อผิดพลาด', 'error');
+                        setSubmitting(false);
+                        return;
+                    }
                 }
             }
-            await submitJoinRequest(currentUser);
+            if (currentUser) {
+                await submitJoinRequest(currentUser);
+            }
         } catch (error) {
             console.error(error);
             showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
@@ -195,21 +228,28 @@ export default function TenantJoinGeneral({ user }) {
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-brand-gray-500 uppercase px-1 tracking-widest">{authMethod === 'phone' ? 'เบอร์โทรศัพท์' : 'อีเมล'}</label>
                                         {authMethod === 'phone' ? (
-                                            <input type="tel" placeholder="08X-XXX-XXXX" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full bg-white/5 rounded-xl px-4 py-3 text-sm text-white border border-white/10 focus:border-brand-orange-500 outline-none placeholder:text-white/10 transition-all font-medium" required />
+                                            <div className="flex items-center bg-white/5 rounded-xl px-4 py-3 border border-white/10 focus-within:border-brand-orange-500 transition-all">
+                                                <Phone className="w-4 h-4 text-white/20 mr-3 shrink-0" />
+                                                <input type="tel" placeholder="08X-XXX-XXXX" value={phone} onChange={(e) => setPhone(e.target.value)} className="bg-transparent border-none text-white font-medium w-full outline-none placeholder:text-white/10 text-sm" required />
+                                            </div>
                                         ) : (
-                                            <input type="email" placeholder="example@mail.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-white/5 rounded-xl px-4 py-3 text-sm text-white border border-white/10 focus:border-brand-orange-500 outline-none placeholder:text-white/10 transition-all font-medium" required />
+                                            <div className="flex items-center bg-white/5 rounded-xl px-4 py-3 border border-white/10 focus-within:border-brand-orange-500 transition-all">
+                                                <Mail className="w-4 h-4 text-white/20 mr-3 shrink-0" />
+                                                <input type="email" placeholder="example@mail.com" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-transparent border-none text-white font-medium w-full outline-none placeholder:text-white/10 text-sm" required />
+                                            </div>
                                         )}
                                     </div>
 
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-brand-gray-500 uppercase px-1 tracking-widest">รหัสผ่าน</label>
-                                        <div className="relative">
+                                        <div className="relative flex items-center bg-white/5 rounded-xl px-4 py-3 border border-white/10 focus-within:border-brand-orange-500 transition-all">
+                                            <Lock className="w-4 h-4 text-white/20 mr-3 shrink-0" />
                                             <input
                                                 type={showPassword ? "text" : "password"}
                                                 placeholder="ตั้งรหัสผ่าน 6 ตัวขึ้นไป"
                                                 value={password}
                                                 onChange={(e) => setPassword(e.target.value)}
-                                                className="w-full bg-white/5 rounded-xl px-4 py-3 text-sm text-white border border-white/10 focus:border-brand-orange-500 outline-none placeholder:text-white/10 transition-all font-medium"
+                                                className="bg-transparent border-none text-white font-medium w-full outline-none placeholder:text-white/10 text-sm"
                                                 required
                                             />
                                             <button

@@ -5,7 +5,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import {
     LogOut, Home, User, Settings, Building,
-    X, LayoutGrid, ClipboardList, MessageSquare, Clock, Gauge, FileText
+    X, LayoutGrid, ClipboardList, MessageSquare, Clock, Gauge, FileText, CreditCard
 } from 'lucide-react';
 
 export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpen }) {
@@ -72,6 +72,12 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
             icon: <FileText className="w-5 h-5 mr-3" />,
             path: '/contracts',
             active: path === '/contracts'
+        },
+        {
+            label: 'ออกบิลรายเดือน',
+            icon: <CreditCard className="w-5 h-5 mr-3" />,
+            path: '/billing',
+            active: path === '/billing'
         }
     ];
 
@@ -145,7 +151,7 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
                             className={`w-full flex items-center px-3 py-1.5 rounded-lg font-bold transition-all active:scale-95 text-xs ${item.active ? 'bg-brand-orange-500/10 text-brand-orange-500' : 'text-brand-gray-300 hover:bg-white/5 hover:text-white'}`}
                         >
                             <span className="w-5 h-5 flex items-center justify-center mr-2 opacity-80 shrink-0">
-                                {React.cloneElement(item.icon, { className: 'w-4 h-4' })}
+                                {item.icon && React.isValidElement(item.icon) ? React.cloneElement(item.icon, { className: 'w-4 h-4' }) : null}
                             </span>
                             {item.label}
                         </button>
@@ -162,7 +168,7 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
                                 >
                                     <span className="flex items-center">
                                         <span className="w-5 h-5 flex items-center justify-center mr-2 opacity-80 shrink-0">
-                                            {React.cloneElement(item.icon, { className: 'w-4 h-4' })}
+                                            {item.icon && React.isValidElement(item.icon) ? React.cloneElement(item.icon, { className: 'w-4 h-4' }) : null}
                                         </span>
                                         {item.label}
                                     </span>

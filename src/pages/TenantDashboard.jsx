@@ -6,11 +6,12 @@ import { collection, query, where, getDocs, doc, getDoc, onSnapshot, addDoc, ser
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage2 } from '../firebase';
 import {
-    LogOut, Home, MessageSquare, CreditCard, User,
-    Bell, Settings, LayoutGrid, ChevronRight, ChevronLeft, CheckCircle2,
-    Clock, AlertCircle, MapPin, Building, Wallet, CircleUser, ArrowUpRight, Activity, Zap, Droplets,
-    Wind, Tv, Wifi, Bed, Shirt, Thermometer, Snowflake, Refrigerator, Fan, Box, Camera, Key, ShieldCheck, X,
-    Printer, Banknote, Receipt, FileText, Calendar, List, Download, Info
+    LogOut, Home, MessageSquare, CreditCard, User, CheckCircle2,
+    Activity, CircleUser, ChevronRight, ChevronLeft, X, Phone, Mail, Building, Bell,
+    ArrowUpRight, Printer, History, Banknote, Receipt, Wallet, Zap, Droplets,
+    FileText, Calendar, List, Download, Info, Snowflake, Fan,
+    Bed, Shirt, Thermometer, Refrigerator, Tv, Wifi, LayoutGrid, Settings,
+    Clock, AlertCircle
 } from 'lucide-react';
 import Toast, { useToast } from '../components/Toast';
 import ProfileModal from '../components/ProfileModal';
@@ -21,6 +22,8 @@ export default function TenantDashboard({ user }) {
     const [loading, setLoading] = useState(true);
     const [myRooms, setMyRooms] = useState([]);
     const [hasPendingRequest, setHasPendingRequest] = useState(false);
+    const [historyGroups, setHistoryGroups] = useState([]);
+    const [isHistoryMode, setIsHistoryMode] = useState(false);
     const [activeTab, setActiveTab] = useState('bills');
     const [apartmentDetails, setApartmentDetails] = useState({});
     const [maintenanceRequests, setMaintenanceRequests] = useState([]);
@@ -38,6 +41,7 @@ export default function TenantDashboard({ user }) {
     const [selectedMonths, setSelectedMonths] = useState(new Set());
     const [billViewMode, setBillViewMode] = useState('calendar'); // 'calendar' or 'list'
     const [roomSubTab, setRoomSubTab] = useState('expenses'); // 'expenses' or 'contract'
+    const [selectedPayment, setSelectedPayment] = useState(null);
     const paymentPrintRef = useRef(null);
 
     // Profile Edit State
@@ -59,7 +63,7 @@ export default function TenantDashboard({ user }) {
         const hour = new Date().getHours();
         if (hour < 12) return 'สวัสดียามเช้า';
         if (hour < 17) return 'สวัสดียามบ่าย';
-        if (hour < 20) return 'สวัสดียามเย็น';
+        if (hour < 20) return 'สวัสดียามค่ำคืน';
         return 'สวัสดียามค่ำคืน';
     };
 
@@ -68,6 +72,38 @@ export default function TenantDashboard({ user }) {
             setLoading(false);
             return;
         }
+
+        // Check history for Option B
+        const checkHistory = async () => {
+            try {
+                const histQ = query(
+                    collection(db, 'tenantHistory'),
+                    where('tenantId', '==', user.uid)
+                );
+                const histSnap = await getDocs(histQ);
+                if (!histSnap.empty) {
+                    const history = histSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+                        .sort((a, b) => b.movedOutAt?.seconds - a.movedOutAt?.seconds);
+                    setHistoryGroups(history);
+                    setIsHistoryMode(true);
+
+                    // Fetch details for historical apartments
+                    for (const h of history) {
+                        if (h.apartmentId) {
+                            const aptRef = doc(db, 'apartments', h.apartmentId);
+                            const aptSnap = await getDoc(aptRef);
+                            if (aptSnap.exists()) {
+                                setApartmentDetails(prev => ({ ...prev, [h.apartmentId]: aptSnap.data() }));
+                            }
+                        }
+                    }
+                } else {
+                    setIsHistoryMode(false);
+                }
+            } catch (err) {
+                console.error("Error checking history", err);
+            }
+        };
 
         // 1. Listen for rooms where this user is the tenant
         const roomsQ = query(collection(db, 'rooms'), where('tenantId', '==', user.uid));
@@ -84,22 +120,25 @@ export default function TenantDashboard({ user }) {
             setMyRooms(roomsData);
 
             if (roomsData.length > 0) {
-                // Fetch apartment details if they exist
-                const aptInfo = { ...apartmentDetails };
+                // Active tenant
+                setIsHistoryMode(false);
+                // Fetch apartment details if they exist in a reactive way
                 for (const id of aptIds) {
-                    if (!aptInfo[id]) {
-                        const aptRef = doc(db, 'apartments', id);
-                        const aptSnap = await getDoc(aptRef);
-                        if (aptSnap.exists()) {
-                            aptInfo[id] = aptSnap.data();
-                        }
+                    const aptRef = doc(db, 'apartments', id);
+                    const aptSnap = await getDoc(aptRef);
+                    if (aptSnap.exists()) {
+                        setApartmentDetails(prev => ({
+                            ...prev,
+                            [id]: aptSnap.data()
+                        }));
                     }
                 }
-                setApartmentDetails(aptInfo);
                 setHasPendingRequest(false); // If has rooms, no need to show pending
             } else {
-                // If no rooms, start listening for pending requests
+                // Not an active tenant, check for history or pending request
+                setActiveTab('dashboard');
                 setupRequestSubscriber();
+                checkHistory();
             }
             setLoading(false);
         }, (error) => {
@@ -119,9 +158,10 @@ export default function TenantDashboard({ user }) {
             );
 
             unsubscribeRequests = onSnapshot(reqQ, (snap) => {
+                console.log("[TenantDashboard] Pending requests listener fired. Found:", !snap.empty);
                 setHasPendingRequest(!snap.empty);
             }, (error) => {
-                console.warn("Error listening to requests", error);
+                console.warn("[TenantDashboard] Error listening to requests", error);
             });
         };
         setupRequestSubscriber();
@@ -340,6 +380,7 @@ export default function TenantDashboard({ user }) {
     const NavItems = [
         { id: 'bills', icon: <Wallet className="w-5 h-5" />, label: 'บิลค่าเช่า' },
         { id: 'dashboard', icon: <Building className="w-5 h-5" />, label: 'ห้องเช่า' },
+        { id: 'history', icon: <History className="w-5 h-5" />, label: 'ประวัติ' },
         { id: 'maintenance', icon: <Activity className="w-5 h-5" />, label: 'แจ้งซ่อม' },
         { id: 'profile', icon: <CircleUser className="w-5 h-5" />, label: 'โปรไฟล์' },
     ];
@@ -397,19 +438,52 @@ export default function TenantDashboard({ user }) {
                     <div className="space-y-4 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
 
                         {myRooms.length === 0 ? (
-                            <div className="bg-brand-card/50 p-8 rounded-2xl text-center border border-white/5 backdrop-blur-sm relative overflow-hidden group">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-brand-orange-500/5 rounded-bl-[4rem] group-hover:scale-110 transition-transform duration-700"></div>
-                                <div className="w-16 h-16 bg-brand-orange-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 text-brand-orange-500">
-                                    {hasPendingRequest ? <Clock className="w-8 h-8 animate-pulse" /> : <AlertCircle className="w-8 h-8" />}
+                            <div className="space-y-4">
+                                <div className="bg-brand-card/50 p-8 rounded-2xl text-center border border-white/5 backdrop-blur-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-brand-orange-500/5 rounded-bl-[4rem] group-hover:scale-110 transition-transform duration-700"></div>
+                                    <div className="w-16 h-16 bg-brand-orange-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 text-brand-orange-500">
+                                        {hasPendingRequest ? <Clock className="w-8 h-8 animate-pulse" /> : <AlertCircle className="w-8 h-8" />}
+                                    </div>
+                                    <h2 className="text-white font-semibold text-xl mb-2">
+                                        {hasPendingRequest ? 'กำลังรอดำเนินการ' : 'ไม่พบข้อมูลห้องพัก'}
+                                    </h2>
+                                    <p className="text-brand-gray-500 text-sm font-normal leading-relaxed max-w-[240px] mx-auto">
+                                        {hasPendingRequest
+                                            ? 'คำขอร่วมหอพักของคุณส่งไปแล้ว กรุณารอเจ้าของหอพักตรวจสอบข้อมูลครับ'
+                                            : 'อีเมลของคุณยังไม่ได้ถูกผูกเข้ากับห้องพักใดๆ ในปัจจุบันครับ'}
+                                    </p>
                                 </div>
-                                <h2 className="text-white font-semibold text-xl mb-2">
-                                    {hasPendingRequest ? 'กำลังรอดำเนินการ' : 'ไม่พบข้อมูลห้องพัก'}
-                                </h2>
-                                <p className="text-brand-gray-500 text-sm font-normal leading-relaxed max-w-[240px] mx-auto">
-                                    {hasPendingRequest
-                                        ? 'คำขอร่วมหอพักของคุณส่งไปแล้ว กรุณารอเจ้าของหอพักตรวจสอบข้อมูลครับ'
-                                        : 'อีเมลของคุณยังไม่ได้ถูกผูกเข้ากับห้องพักใดๆ กรุณาติดต่อเจ้าหน้าที่หอพักครับ'}
-                                </p>
+
+                                {isHistoryMode && historyGroups.length > 0 && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2 px-1">
+                                            <History className="w-4 h-4 text-brand-orange-500" />
+                                            <h3 className="text-sm font-bold text-white uppercase tracking-wide">ประวัติการเช่า (ย้ายออกแล้ว)</h3>
+                                        </div>
+                                        {historyGroups.map((hist, idx) => (
+                                            <div key={hist.id} className="bg-brand-card/30 border border-white/8 rounded-2xl p-4 flex items-center justify-between hover:border-brand-orange-500/30 transition-all group">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-brand-gray-400">
+                                                        <Building className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-white">หอพัก {hist.apartmentName}</p>
+                                                        <p className="text-[10px] text-brand-gray-500">ห้อง {hist.roomNumber} • ชั้น {hist.floor}</p>
+                                                        <p className="text-[9px] text-brand-orange-500/60 mt-0.5">
+                                                            ย้ายออกเมื่อ {hist.movedOutAt?.toDate ? hist.movedOutAt.toDate().toLocaleDateString('th-TH') : '-'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => setActiveTab('bills')}
+                                                    className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-brand-gray-400 group-hover:bg-brand-orange-500 group-hover:text-brand-bg transition-all"
+                                                >
+                                                    <ChevronRight className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <>
@@ -966,7 +1040,11 @@ export default function TenantDashboard({ user }) {
                                             <div className="space-y-2">
                                                 {yearPayments.length > 0 ? (
                                                     yearPayments.map((p, idx) => (
-                                                        <div key={p.id} className="bg-brand-card/50 p-4 rounded-2xl border border-white/8 flex items-center gap-3">
+                                                        <button
+                                                            key={p.id}
+                                                            onClick={() => setSelectedPayment(p)}
+                                                            className="w-full bg-brand-card/50 p-4 rounded-2xl border border-white/8 flex items-center gap-3 hover:border-brand-orange-500/30 transition-all text-left"
+                                                        >
                                                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${p.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-400'}`}>
                                                                 {p.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                                                             </div>
@@ -982,7 +1060,7 @@ export default function TenantDashboard({ user }) {
                                                                     {p.status === 'paid' ? 'จ่ายแล้ว' : 'ค้าง'}
                                                                 </span>
                                                             </div>
-                                                        </div>
+                                                        </button>
                                                     ))
                                                 ) : (
                                                     <div className="bg-brand-card/20 p-8 rounded-2xl border border-dashed border-white/5 text-center">
@@ -1148,6 +1226,21 @@ export default function TenantDashboard({ user }) {
                                     </div>
                                     <ChevronRight size={18} className="text-brand-gray-700" />
                                 </button>
+                                <button
+                                    onClick={() => navigate('/tenant-history')}
+                                    className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-all group"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-brand-gray-500 group-hover:text-brand-orange-500 transition-colors">
+                                            <History size={18} />
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-sm font-medium text-white">ประวัติการเช่า</p>
+                                            <p className="text-xs font-normal text-brand-gray-500 mt-0.5">รวมข้อมูลหอพักที่เคยพักและยอดชำระ</p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight size={18} className="text-brand-gray-700" />
+                                </button>
                             </div>
                         </div>
 
@@ -1260,7 +1353,13 @@ export default function TenantDashboard({ user }) {
                     {NavItems.map(item => (
                         <button
                             key={item.id}
-                            onClick={() => setActiveTab(item.id)}
+                            onClick={() => {
+                                if (item.id === 'history') {
+                                    navigate('/tenant-history');
+                                } else {
+                                    setActiveTab(item.id);
+                                }
+                            }}
                             className={`flex flex-col items-center gap-1.5 p-2 transition-all relative ${activeTab === item.id ? 'text-brand-orange-500' : 'text-brand-gray-600 hover:text-brand-gray-300'
                                 }`}
                         >
@@ -1278,6 +1377,95 @@ export default function TenantDashboard({ user }) {
                     ))}
                 </div>
             </nav>
+            {/* ── Bill Details Modal ──────────────────────── */}
+            {selectedPayment && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedPayment(null)} />
+                    <div className="relative bg-brand-card w-full max-w-md rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-bold text-white">รายละเอียดบิล</h3>
+                                <p className="text-[10px] text-brand-gray-500 uppercase tracking-widest font-bold">
+                                    {new Date(selectedPayment.month + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
+                                </p>
+                            </div>
+                            <button onClick={() => setSelectedPayment(null)} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-brand-gray-400">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-brand-gray-400 font-medium tracking-tight">ค่าเช่าห้อง</span>
+                                    <span className="text-white font-bold">{(selectedPayment.details?.rent || 0).toLocaleString()} บ.</span>
+                                </div>
+                                {selectedPayment.details?.electricity && (
+                                    <div className="flex justify-between items-start text-sm">
+                                        <div className="flex flex-col">
+                                            <span className="text-brand-gray-400 font-medium tracking-tight">ค่าไฟฟ้า ({selectedPayment.details.electricity.units} หน่วย)</span>
+                                            <span className="text-[10px] text-brand-gray-600 font-bold">{selectedPayment.details.electricity.old} - {selectedPayment.details.electricity.new}</span>
+                                        </div>
+                                        <span className="text-white font-bold">{(selectedPayment.details.electricity.amount || 0).toLocaleString()} บ.</span>
+                                    </div>
+                                )}
+                                {selectedPayment.details?.water && (
+                                    <div className="flex justify-between items-start text-sm">
+                                        <div className="flex flex-col">
+                                            <span className="text-brand-gray-400 font-medium tracking-tight">ค่าน้ำ ({selectedPayment.details.water.units} หน่วย)</span>
+                                            <span className="text-[10px] text-brand-gray-600 font-bold">{selectedPayment.details.water.old} - {selectedPayment.details.water.new}</span>
+                                        </div>
+                                        <span className="text-white font-bold">{(selectedPayment.details.water.amount || 0).toLocaleString()} บ.</span>
+                                    </div>
+                                )}
+                                {(selectedPayment.details?.fixedExpenses || []).map((ex, idx) => (
+                                    <div key={idx} className="flex justify-between items-center text-sm">
+                                        <span className="text-brand-gray-400 font-medium tracking-tight">{ex.name}</span>
+                                        <span className="text-white font-bold">{(ex.amount || 0).toLocaleString()} บ.</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="pt-6 border-t border-white/10">
+                                <div className="flex justify-between items-end">
+                                    <span className="text-brand-gray-500 font-black italic uppercase text-xs">รวมทั้งสิ้น</span>
+                                    <div className="text-right">
+                                        <h2 className="text-3xl font-black text-brand-orange-500 leading-none">
+                                            {(selectedPayment.amount || 0).toLocaleString()}
+                                        </h2>
+                                        <span className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-widest mt-1 block">บาท</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-brand-orange-500/5 border border-brand-orange-500/10 p-4 rounded-2xl flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${selectedPayment.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-yellow-500/10 text-yellow-400'}`}>
+                                    {selectedPayment.status === 'paid' ? <CheckCircle2 size={20} /> : <Clock size={20} />}
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest leading-none mb-1">สถานะปัจจุบัน</p>
+                                    <p className={`text-sm font-black ${selectedPayment.status === 'paid' ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                                        {selectedPayment.status === 'paid' ? 'ชำระเงินเรียบร้อยแล้ว' : 'ยังไม่ได้ชำระเงิน'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {selectedPayment.status !== 'paid' && primaryApt?.bankDetails && (
+                                <div className="space-y-4 pt-2">
+                                    <div className="text-center">
+                                        <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest mb-3">ชำระผ่าน PromptPay</p>
+                                        <div className="bg-white p-4 rounded-2xl inline-block shadow-xl">
+                                            <QRCodeSVG
+                                                value={`https://promptpay.io/${primaryApt.bankDetails.promptpay}/${selectedPayment.amount}`}
+                                                size={160}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

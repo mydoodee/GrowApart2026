@@ -62,56 +62,60 @@ export default function RoomManagement({ user }) {
                 setApartments(apps);
 
                 if (activeAptId && activeAptId !== 'all') {
-                    // Fetch tenants for this apartment to cross-reference room occupancy
-                    const tenantSnap = await getDocs(query(
+                    const activeApt = apps.find(a => a.id === activeAptId);
+
+                    // 1. Listen for tenants real-time
+                    const tenantQ = query(
                         collection(db, 'users'),
                         where(`apartmentRoles.${activeAptId}.role`, '==', 'tenant')
-                    ));
-                    const tenantsByRoom = {};
-                    tenantSnap.docs.forEach(d => {
-                        const data = d.data();
-                        const rn = data.apartmentRoles?.[activeAptId]?.roomNumber;
-                        if (rn) {
-                            tenantsByRoom[rn] = {
-                                tenantId: d.id,
-                                tenantName: data.name || data.displayName || ''
-                            };
-                        }
-                    });
+                    );
 
-                    const q = query(collection(db, 'rooms'), where('apartmentId', '==', activeAptId));
+                    const unsubTenants = onSnapshot(tenantQ, (tenantSnap) => {
+                        const tenantsByRoom = {};
+                        tenantSnap.docs.forEach(d => {
+                            const data = d.data();
+                            const rn = data.apartmentRoles?.[activeAptId]?.roomNumber;
+                            if (rn) {
+                                tenantsByRoom[rn] = {
+                                    tenantId: d.id,
+                                    tenantName: data.name || data.displayName || ''
+                                };
+                            }
+                        });
 
-                    unsubscribe = onSnapshot(q, (snapshot) => {
-                        const firestoreRooms = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                        const activeApt = apps.find(a => a.id === activeAptId);
-                        let allRooms = [];
-
-                        if (activeApt) {
+                        // 2. Listen for rooms (nested or keep separate but dependent)
+                        // Actually, it's better to just subscribe to rooms and use the latest tenantsByRoom
+                        const roomsQ = query(collection(db, 'rooms'), where('apartmentId', '==', activeAptId));
+                        const unsubRooms = onSnapshot(roomsQ, (snapshot) => {
+                            const firestoreRooms = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                             const generated = generateRoomsFromConfig(activeApt);
-                            allRooms = generated.map(genRoom => {
+                            const allRooms = generated.map(genRoom => {
                                 const existing = firestoreRooms.find(r => r.roomNumber === genRoom.roomNumber);
                                 const room = existing ? { ...existing } : { ...genRoom };
 
-                                // Cross-reference with tenant data for accurate status
                                 const tenant = tenantsByRoom[room.roomNumber];
                                 if (tenant) {
                                     room.status = 'ไม่ว่าง';
                                     room.tenantId = tenant.tenantId;
                                     room.tenantName = tenant.tenantName;
                                 } else if (!existing || !room.tenantId) {
-                                    // Only reset to vacant if no tenant found AND no tenantId in Firestore
                                     if (normalizeStatus(room.status) === 'ไม่ว่าง' || room.status === 'occupied') {
                                         room.status = 'ว่าง';
                                         room.tenantId = null;
                                         room.tenantName = null;
                                     }
                                 }
-
                                 return room;
                             });
-                        }
-                        setRooms(allRooms);
-                        setLoading(false);
+                            setRooms(allRooms);
+                            setLoading(false);
+                        });
+
+                        // Store unsubs for cleanup
+                        unsubscribe = () => {
+                            unsubRooms();
+                            unsubTenants();
+                        };
                     });
                 } else if (activeAptId === 'all') {
                     // Fetch all tenants for all our apartments
@@ -426,14 +430,23 @@ export default function RoomManagement({ user }) {
                                             </div>
 
                                             {/* footer */}
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-1">
+                                            <div className="flex items-center justify-between mt-auto pt-2 border-t border-white/5">
+                                                <div className="flex items-center gap-1.5">
                                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
                                                     <span className={`text-[9px] font-medium ${style.text}`}>{style.label}</span>
                                                 </div>
-                                                {room.tenantName && (
-                                                    <span className="text-[9px] text-brand-gray-500 truncate max-w-[60%]">{room.tenantName}</span>
-                                                )}
+
+                                                <div className="flex items-center gap-1.5 text-[9px] font-black tracking-wide text-brand-gray-500">
+                                                    <div className="flex items-center gap-0.5" title="เลขมิเตอร์ไฟฟ้าล่าสุด">
+                                                        <Zap className="w-[10px] h-[10px] text-yellow-500/70" />
+                                                        <span>{room.electricityMeter || 0}</span>
+                                                    </div>
+                                                    <span className="text-white/20 select-none">|</span>
+                                                    <div className="flex items-center gap-0.5" title="เลขมิเตอร์น้ำล่าสุด">
+                                                        <Droplets className="w-[10px] h-[10px] text-blue-500/70" />
+                                                        <span>{room.waterMeter || 0}</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </button>
                                     );
