@@ -17,13 +17,12 @@ export default function ResetPassword() {
     const [oobCode, setOobCode] = useState(null);
 
     useEffect(() => {
-        // Extract oobCode from URL query parameters
         const query = new URLSearchParams(location.search);
         const code = query.get('oobCode');
         if (code) {
-            setOobCode(code);
+            setOobCode(prev => prev !== code ? code : prev);
         } else {
-            setError('ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุ');
+            setError(prev => prev !== 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุ' ? 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุ' : prev);
         }
     }, [location]);
 

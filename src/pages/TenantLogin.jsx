@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   GoogleAuthProvider,
   signInWithPopup,
@@ -19,7 +18,8 @@ import {
   Building,
   Phone,
 } from "lucide-react";
-import Toast, { useToast } from "../components/Toast";
+import Toast from "../components/Toast";
+import { useToast } from '../hooks/useToast';
 
 const GoogleIcon = () => (
   <svg className="w-5 h-4 mr-3" viewBox="0 0 48 48">
@@ -59,7 +59,6 @@ export default function TenantLogin({ user }) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
 
   useEffect(() => {
     if (user && localStorage.getItem("loginContext") === "tenant") {

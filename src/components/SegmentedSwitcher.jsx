@@ -10,7 +10,9 @@ export const SegmentedSwitcher = ({ apartments, activeId, onSelect }) => {
         try {
             const stored = localStorage.getItem('selectedBuildingIds');
             if (stored) return JSON.parse(stored);
-        } catch (e) { }
+        } catch (err) {
+            console.warn("Failed to parse selectedBuildingIds", err);
+        }
         // Fallback: if no selectedBuildingIds, use activeId
         if (activeId && activeId !== 'all') return [activeId];
         return apartments.map(a => a.id);
@@ -18,7 +20,6 @@ export const SegmentedSwitcher = ({ apartments, activeId, onSelect }) => {
 
     const visibleApartments = apartments.filter(a => selectedIds.includes(a.id));
     const isSingleMode = visibleApartments.length === 1;
-    const isMultiMode = visibleApartments.length > 1;
 
     const activeApt = apartments.find(a => a.id === activeId);
     const activeIndex = apartments.findIndex(a => a.id === activeId);
@@ -139,7 +140,7 @@ export const SegmentedSwitcher = ({ apartments, activeId, onSelect }) => {
                         <div className="border-t border-white/10 mx-2"></div>
 
                         {/* Only show buildings that were selected at Picker */}
-                        {visibleApartments.map((apt, _) => {
+                        {visibleApartments.map((apt) => {
                             const isActive = apt.id === activeId;
                             const globalIndex = apartments.findIndex(a => a.id === apt.id);
                             return (

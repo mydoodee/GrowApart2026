@@ -6,7 +6,8 @@ import {
 import { db } from '../firebase';
 import { getUserApartments } from '../utils/apartmentUtils';
 import MainLayout from '../components/MainLayout';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import {
     Zap, Droplets, ChevronDown, ChevronRight,
     Save, Check, Loader2, Building, AlertCircle
@@ -24,12 +25,6 @@ const generateRoomsFromConfig = (apt) => {
         }
     });
     return rooms;
-};
-
-const fmtDate = (ts) => {
-    if (!ts) return null;
-    const d = ts?.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
 // ---------------------- Component ----------------------

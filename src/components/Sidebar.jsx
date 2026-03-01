@@ -16,7 +16,7 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
     const tab = searchParams.get('tab');
     useEffect(() => {
         if (!activeAptId || activeAptId === 'all') {
-            setRequestCount(0);
+            setRequestCount(prev => prev !== 0 ? 0 : prev);
             return;
         }
 
@@ -32,7 +32,7 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
         });
 
         return () => unsubscribe();
-    }, [activeAptId]);
+    }, [activeAptId]); // requestCount is used in functional update, so we don't need it in deps for the reset logic.
 
     const handleLogout = async () => {
         await signOut(auth);

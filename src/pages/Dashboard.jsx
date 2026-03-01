@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, doc, getDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { LayoutGrid, Bell } from 'lucide-react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import MainLayout from '../components/MainLayout';
 import { getUserApartments } from '../utils/apartmentUtils';
 
@@ -77,7 +78,7 @@ export default function Dashboard({ user }) {
         });
 
         return () => unsubscribe();
-    }, [user, activeAptId]);
+    }, [user, activeAptId, showToast]);
 
     const handleAptSwitch = (id) => {
         localStorage.setItem('activeApartmentId', id);
