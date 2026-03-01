@@ -4,7 +4,8 @@ import { doc, getDoc, setDoc, collection, addDoc, query, where, getDocs, serverT
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { Building, MapPin, User, CheckCircle2, Loader2, Mail, Phone, Lock, Eye, EyeOff } from 'lucide-react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 
 const GoogleIcon = () => (
     <svg className="w-4 h-4 mr-3" viewBox="0 0 48 48">

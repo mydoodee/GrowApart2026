@@ -2,20 +2,20 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     collection, query, where, getDocs, doc, setDoc,
-    serverTimestamp, getDoc, onSnapshot
+    serverTimestamp, getDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getUserApartments } from '../utils/apartmentUtils';
 import MainLayout from '../components/MainLayout';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import {
     Zap, Droplets, ChevronDown, ChevronRight,
     Save, Check, Loader2, Building, AlertCircle, User,
     Calendar, List, Download, CreditCard, Printer,
-    ChevronLeft, CheckCircle2, Clock, Info, Banknote, FileText
+    ChevronLeft, CheckCircle2, Clock, Info, Banknote, FileText, X
 } from 'lucide-react';
 
-const thMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const thMonthsFull = [
     "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
     "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
@@ -40,6 +40,7 @@ export default function MonthlyBilling({ user }) {
     const [rooms, setRooms] = useState([]);
     const [meterReadings, setMeterReadings] = useState({}); // { roomNumber: { electricity: {}, water: {} } }
     const [existingPayments, setExistingPayments] = useState({}); // { roomNumber: paymentDoc }
+    const [verifyingPayment, setVerifyingPayment] = useState(null); // Payment doc to verify
 
     const monthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
 
@@ -179,6 +180,29 @@ export default function MonthlyBilling({ user }) {
         setIssuing(prev => ({ ...prev, [room.roomNumber]: false }));
     };
 
+    const handleVerifyPayment = async (status) => {
+        if (!verifyingPayment) return;
+        try {
+            const payRef = doc(db, 'payments', verifyingPayment.id);
+            await setDoc(payRef, {
+                status: status,
+                verifiedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            setExistingPayments(prev => ({
+                ...prev,
+                [verifyingPayment.roomNumber]: { ...prev[verifyingPayment.roomNumber], status: status }
+            }));
+
+            showToast(status === 'paid' ? 'ยืนยันการชำระเงินเรียบร้อย' : 'ปฏิเสธการชำระเงินแล้ว', 'success');
+            setVerifyingPayment(null);
+        } catch (e) {
+            console.error(e);
+            showToast('เกิดข้อผิดพลาด', 'error');
+        }
+    };
+
     const issueAllReady = async () => {
         const readyRooms = rooms.filter(r => {
             if (!r.tenantId) return false;
@@ -241,6 +265,7 @@ export default function MonthlyBilling({ user }) {
         return meters.electricity && meters.water && !existingPayments[r.roomNumber];
     });
     const alreadyIssued = occupiedRooms.filter(r => existingPayments[r.roomNumber]);
+    const paidCount = occupiedRooms.filter(r => existingPayments[r.roomNumber]?.status === 'paid').length;
 
     return (
         <MainLayout
@@ -294,12 +319,13 @@ export default function MonthlyBilling({ user }) {
                 </div>
 
                 {/* Summary Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     {[
                         { label: 'ห้องที่มีผู้เช่า', value: occupiedRooms.length, icon: <User />, color: 'text-blue-400' },
                         { label: 'เก็บมิเตอร์แล้ว', value: occupiedRooms.filter(r => (meterReadings[r.roomNumber]?.electricity && meterReadings[r.roomNumber]?.water)).length, icon: <Zap />, color: 'text-yellow-400' },
                         { label: 'พร้อมออกบิล', value: readyToIssue.length, icon: <CheckCircle2 />, color: 'text-emerald-400' },
                         { label: 'ออกบิลแล้ว', value: alreadyIssued.length, icon: <FileText />, color: 'text-brand-orange-400' },
+                        { label: 'ชำระแล้ว', value: paidCount, icon: <CheckCircle2 />, color: 'text-emerald-500' },
                     ].map((s, idx) => (
                         <div key={idx} className="bg-brand-card/40 border border-white/8 p-4 rounded-2xl">
                             <div className={`w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center mb-3 ${s.color}`}>
@@ -374,9 +400,11 @@ export default function MonthlyBilling({ user }) {
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
                                                     {payment ? (
-                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${payment.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'}`}>
-                                                            {payment.status === 'paid' ? <CheckCircle2 size={10} /> : <Clock size={10} />}
-                                                            {payment.status === 'paid' ? 'ชำระแล้ว' : 'ค้างชำระ'}
+                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${payment.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                                            payment.status === 'waiting_verification' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                                                                'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'}`}>
+                                                            {payment.status === 'paid' ? <CheckCircle2 size={10} /> : payment.status === 'waiting_verification' ? <Clock size={10} /> : <Clock size={10} />}
+                                                            {payment.status === 'paid' ? 'ชำระแล้ว' : payment.status === 'waiting_verification' ? 'รอตรวจสอบ' : 'ค้างชำระ'}
                                                         </span>
                                                     ) : isMetersComplete ? (
                                                         <span className="text-[9px] font-black text-emerald-400/50 uppercase tracking-widest italic">พร้อมออกบิล</span>
@@ -385,15 +413,25 @@ export default function MonthlyBilling({ user }) {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <div className="flex justify-center">
+                                                    <div className="flex justify-center gap-2">
                                                         {payment ? (
-                                                            <button
-                                                                onClick={() => navigate(`/rooms?room=${room.roomNumber}`)}
-                                                                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-brand-gray-400 hover:text-white transition-all"
-                                                                title="ดูรายละเอียด"
-                                                            >
-                                                                <ChevronRight className="w-4 h-4" />
-                                                            </button>
+                                                            <>
+                                                                {payment.status === 'waiting_verification' && (
+                                                                    <button
+                                                                        onClick={() => setVerifyingPayment(payment)}
+                                                                        className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-400 text-brand-bg px-3 py-1.5 rounded-xl text-[10px] font-black transition-all active:scale-95 shadow-lg shadow-orange-500/20"
+                                                                    >
+                                                                        <Check size={14} /> ตรวจสอบสลิป
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => navigate(`/rooms?room=${room.roomNumber}`)}
+                                                                    className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-brand-gray-400 hover:text-white transition-all"
+                                                                    title="ดูรายละเอียด"
+                                                                >
+                                                                    <ChevronRight className="w-4 h-4" />
+                                                                </button>
+                                                            </>
                                                         ) : (
                                                             <button
                                                                 onClick={() => issueBill(room)}
@@ -431,6 +469,60 @@ export default function MonthlyBilling({ user }) {
                 </div>
 
             </div>
+
+            {/* Slip Verification Modal */}
+            {verifyingPayment && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setVerifyingPayment(null)} />
+                    <div className="relative bg-brand-card w-full max-w-lg rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-white">ตรวจสอบหลักฐานการโอนเงิน</h3>
+                            <button onClick={() => setVerifyingPayment(null)} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-brand-gray-400">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <div className="mb-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div>
+                                        <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ห้อง {verifyingPayment.roomNumber}</p>
+                                        <p className="text-sm font-bold text-white">{verifyingPayment.tenantName || 'ไม่ระบุชื่อ'}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ยอดที่ต้องชำระ</p>
+                                        <p className="text-lg font-black text-brand-orange-500">{verifyingPayment.amount?.toLocaleString()} บาท</p>
+                                    </div>
+                                </div>
+                                <div className="bg-black/20 rounded-2xl overflow-hidden border border-white/5 max-h-[400px] flex items-center justify-center">
+                                    {verifyingPayment.slipUrl ? (
+                                        <img src={verifyingPayment.slipUrl} alt="Transfer Slip" className="max-w-full max-h-full object-contain" />
+                                    ) : (
+                                        <div className="py-20 text-center">
+                                            <AlertCircle className="w-10 h-10 text-brand-gray-700 mx-auto mb-2" />
+                                            <p className="text-brand-gray-500 text-xs">ไม่พบรูปภาพสลิป</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => handleVerifyPayment('paid')}
+                                    className="flex-1 py-4 bg-emerald-500 hover:bg-emerald-400 text-brand-bg rounded-2xl font-black uppercase tracking-wider text-xs shadow-xl shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle2 size={16} /> ได้รับเงินถูกต้อง
+                                </button>
+                                <button
+                                    onClick={() => handleVerifyPayment('pending')}
+                                    className="flex-1 py-4 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-brand-bg border border-red-500/20 rounded-2xl font-black uppercase tracking-wider text-xs active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <X size={16} /> ปฏิเสธสลิป
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </MainLayout>
     );
 }

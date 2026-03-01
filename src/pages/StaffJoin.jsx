@@ -4,9 +4,10 @@ import { doc, getDoc, collection, addDoc, query, where, getDocs, serverTimestamp
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { Building, Phone, User as UserIcon, Lock, CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 
-export default function StaffJoin({ user, userRole }) {
+export default function StaffJoin({ user }) {
     const { aptId } = useParams();
     const navigate = useNavigate();
     const { toast, showToast, hideToast } = useToast();
@@ -49,7 +50,7 @@ export default function StaffJoin({ user, userRole }) {
             setLoading(false);
         }
         checkData();
-    }, [aptId, user]);
+    }, [aptId, user, showToast]);
 
     const handleJoinRequest = async (e) => {
         e.preventDefault();

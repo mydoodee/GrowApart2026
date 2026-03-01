@@ -13,7 +13,8 @@ import {
     CheckCircle2, Clock, LayoutGrid, Banknote, KeyRound,
     ArrowRightLeft, ChevronDown, Loader2, LogOut, Download, Printer, Copy, Check, Home, ExternalLink
 } from 'lucide-react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import MainLayout from '../components/MainLayout';
 import { getUserApartments } from '../utils/apartmentUtils';
 
@@ -130,7 +131,10 @@ export default function TenantManagement({ user }) {
         if (tenant) {
             const rn = tenant.apartmentRoles?.[activeAptId]?.roomNumber;
             const roomObj = rooms.find(r => r.roomNumber === rn);
-            setSelectedTenant({ ...tenant, roomNumber: rn, roomObj });
+            setSelectedTenant(prev => {
+                if (prev?.id === tenant.id) return prev;
+                return { ...tenant, roomNumber: rn, roomObj };
+            });
 
             // Set floor filter to show the tenant's room
             if (filterFloor !== 'all' && roomObj && roomObj.floor !== parseInt(filterFloor)) {
@@ -147,8 +151,8 @@ export default function TenantManagement({ user }) {
     // ── payments ──────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!selectedTenant?.id || !activeAptId) {
-            setPayments([]);
-            setPaymentsLoading(false);
+            setPayments(prev => prev.length ? [] : prev);
+            setPaymentsLoading(prev => prev ? false : prev);
             return;
         }
 
@@ -168,7 +172,7 @@ export default function TenantManagement({ user }) {
             setPaymentsLoading(false);
         }, (err) => {
             console.error("Error listening to payments:", err);
-            setPaymentsLoading(false);
+            setPaymentsLoading(prev => prev ? false : prev);
         });
 
         return () => unsubscribe();

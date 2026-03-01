@@ -12,10 +12,6 @@ import {
   getDoc,
   setDoc,
   serverTimestamp,
-  collection,
-  query,
-  where,
-  getDocs,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import {

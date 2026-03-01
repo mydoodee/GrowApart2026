@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import SegmentedSwitcher from './SegmentedSwitcher';
 import ProfileModal from './ProfileModal';
-import Toast, { useToast } from './Toast';
+import Toast from './Toast';
+import { useToast } from '../hooks/useToast';
 import { Menu, Bell, Building, LogOut } from 'lucide-react';
 import { auth } from '../firebase';
 

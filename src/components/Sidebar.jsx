@@ -7,19 +7,16 @@ import {
     LogOut, Home, User, Settings, Building,
     X, LayoutGrid, ClipboardList, MessageSquare, Clock, Gauge, FileText, CreditCard
 } from 'lucide-react';
-
 export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpen }) {
     const navigate = useNavigate();
     const location = useLocation();
     const [requestCount, setRequestCount] = useState(0);
-
     const path = location.pathname;
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
-
     useEffect(() => {
         if (!activeAptId || activeAptId === 'all') {
-            setRequestCount(0);
+            setRequestCount(prev => prev !== 0 ? 0 : prev);
             return;
         }
 
@@ -35,7 +32,7 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
         });
 
         return () => unsubscribe();
-    }, [activeAptId]);
+    }, [activeAptId]); // requestCount is used in functional update, so we don't need it in deps for the reset logic.
 
     const handleLogout = async () => {
         await signOut(auth);

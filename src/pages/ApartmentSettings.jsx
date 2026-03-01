@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-    collection, doc, getDoc, getDocs, setDoc, addDoc,
+    collection, doc, getDoc, getDocs, addDoc,
     query, where, serverTimestamp, updateDoc, deleteField, onSnapshot
 } from 'firebase/firestore';
 import { db, auth, storage2 } from '../firebase';
@@ -14,7 +14,8 @@ import {
     FileText, UploadCloud, ExternalLink
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import MainLayout from '../components/MainLayout';
 import { getUserApartments } from '../utils/apartmentUtils';
 
@@ -179,7 +180,7 @@ export default function ApartmentSettings({ user }) {
             setLoading(false);
         }
         loadData();
-    }, [user, activeAptId, isAddMode]);
+    }, [user, activeAptId, isAddMode, amenities, showToast]);
 
     useEffect(() => {
         if (!user || !activeAptId || activeAptId === 'all') {
