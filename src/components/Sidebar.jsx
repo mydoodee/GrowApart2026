@@ -3,11 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import SegmentedSwitcher from './SegmentedSwitcher';
 import {
     LogOut, Home, User, Settings, Building,
     X, LayoutGrid, ClipboardList, MessageSquare, Clock, Gauge, FileText, CreditCard
 } from 'lucide-react';
-export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpen }) {
+export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpen, apartments, onAptSwitch }) {
     const navigate = useNavigate();
     const location = useLocation();
     const [requestCount, setRequestCount] = useState(0);
@@ -47,28 +48,28 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
             active: path === '/dashboard'
         },
         {
-            label: 'จัดการห้องพัก',
-            icon: <LayoutGrid className="w-5 h-5 mr-3" />,
-            path: '/rooms',
-            active: path === '/rooms'
-        },
-        {
             label: 'ตั้งค่า',
             icon: <Settings className="w-5 h-5 mr-3" />,
             path: '/settings',
             active: path === '/settings' && !tab
         },
         {
-            label: 'เก็บมิเตอร์',
-            icon: <Gauge className="w-5 h-5 mr-3" />,
-            path: '/meters',
-            active: path === '/meters'
-        },
-        {
             label: 'สัญญา',
             icon: <FileText className="w-5 h-5 mr-3" />,
             path: '/contracts',
             active: path === '/contracts'
+        },
+        {
+            label: 'จัดการห้องพัก',
+            icon: <LayoutGrid className="w-5 h-5 mr-3" />,
+            path: '/rooms',
+            active: path === '/rooms'
+        },
+        {
+            label: 'เก็บมิเตอร์',
+            icon: <Gauge className="w-5 h-5 mr-3" />,
+            path: '/meters',
+            active: path === '/meters'
         },
         {
             label: 'ออกบิลรายเดือน',
@@ -137,6 +138,14 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
                     <button onClick={() => setIsMenuOpen(false)} className="md:hidden text-white p-2">
                         <X className="w-5 h-5" />
                     </button>
+                </div>
+
+                <div className="px-3 py-4 border-b border-white/5">
+                    <SegmentedSwitcher
+                        apartments={apartments || []}
+                        activeId={activeAptId}
+                        onSelect={onAptSwitch}
+                    />
                 </div>
 
                 <nav className="flex-1 px-3 py-2 space-y-0.5">

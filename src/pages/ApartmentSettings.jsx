@@ -274,9 +274,9 @@ export default function ApartmentSettings({ user }) {
 
     const handleCopyLoginLink = () => {
         if (!activeAptId || activeAptId === 'all') return;
-        const link = `${window.location.origin}/tenant-login?aptId=${activeAptId}`;
+        const link = `${window.location.origin}/join-tenant/${activeAptId}`;
         navigator.clipboard.writeText(link);
-        showToast('คัดลอกลิงก์หน้าล็อกอินแล้ว', 'success');
+        showToast('คัดลอกลิงก์สำหรับผู้เช่า (ลงทะเบียน) แล้ว', 'success');
     };
 
     const handleAptSwitch = (id) => {
@@ -636,7 +636,7 @@ export default function ApartmentSettings({ user }) {
                                                                 className="flex items-center mx-auto px-3 py-1.5 bg-brand-orange-500/10 text-brand-orange-500 rounded-lg hover:bg-brand-orange-500/20 transition-all text-[10px] font-bold border border-brand-orange-500/20"
                                                             >
                                                                 <LinkIcon size={12} className="mr-1.5" />
-                                                                คัดลอกลิงก์หน้า Login หอพัก
+                                                                คัดลอกลิงก์สำหรับผู้เช่า (ลงทะเบียน)
                                                             </button>
                                                         )}
                                                     </div>

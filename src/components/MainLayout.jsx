@@ -33,6 +33,8 @@ export default function MainLayout({
                 activeAptId={activeAptId}
                 isMenuOpen={isMenuOpen}
                 setIsMenuOpen={setIsMenuOpen}
+                apartments={apartments}
+                onAptSwitch={onAptSwitch}
             />
 
             {/* Main Content Area */}
@@ -55,11 +57,6 @@ export default function MainLayout({
                     <h2 className="text-sm font-bold text-white hidden md:block tracking-tight uppercase">{title}</h2>
 
                     <div className="flex items-center space-x-6">
-                        <SegmentedSwitcher
-                            apartments={apartments}
-                            activeId={activeAptId}
-                            onSelect={onAptSwitch}
-                        />
                         <button className="relative text-brand-gray-400 hover:text-white transition-colors">
                             <Bell className="w-5 h-5" />
                             <span className="absolute top-0 right-0 w-2 h-2 bg-brand-orange-500 rounded-full border border-brand-gray-900"></span>

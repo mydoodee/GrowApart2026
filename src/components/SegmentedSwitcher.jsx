@@ -85,14 +85,14 @@ export const SegmentedSwitcher = ({ apartments, activeId, onSelect }) => {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className={`
-                    flex items-center px-3 py-1.5 transition-all duration-200 rounded-xl
+                    flex items-center w-full px-3 py-2 transition-all duration-200 rounded-xl
                     ${isOpen
-                        ? 'bg-brand-orange-500/10 border border-brand-orange-500/50 shadow-lg shadow-brand-orange-500/10'
-                        : 'bg-transparent border border-transparent hover:bg-white/5'}
+                        ? 'bg-brand-orange-500/10 border border-brand-orange-500/30 shadow-lg shadow-brand-orange-500/10'
+                        : 'bg-transparent border border-white/5 hover:bg-white/10'}
                 `}
             >
                 <div className={`
-                    w-8 h-8 rounded-xl flex items-center justify-center mr-3
+                    w-9 h-9 rounded-xl flex items-center justify-center mr-3 shrink-0
                     ${activeId === 'all' ? 'bg-brand-orange-500 text-brand-bg' : 'bg-brand-orange-500/10'}
                 `}>
                     {activeId === 'all'
@@ -100,15 +100,15 @@ export const SegmentedSwitcher = ({ apartments, activeId, onSelect }) => {
                         : <Building className="w-4 h-4 text-brand-orange-500" />
                     }
                 </div>
-                <div className="text-left mr-3">
-                    <p className="text-[8px] font-bold uppercase tracking-widest leading-none mb-0.5 text-brand-gray-500">
+                <div className="text-left flex-1 min-w-0 mr-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider leading-none mb-1 text-brand-gray-500">
                         {getDisplaySub()}
                     </p>
-                    <p className="text-[12px] font-bold text-white uppercase leading-none truncate max-w-[120px]">
+                    <p className="text-[13px] font-bold text-white uppercase leading-none truncate">
                         {getDisplayLabel()}
                     </p>
                 </div>
-                <ChevronDown className={`w-4 h-4 text-brand-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-brand-gray-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isOpen && (
