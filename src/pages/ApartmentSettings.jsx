@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-    collection, doc, getDoc, getDocs, setDoc, addDoc,
+    collection, doc, getDoc, getDocs, addDoc,
     query, where, serverTimestamp, updateDoc, deleteField, onSnapshot
 } from 'firebase/firestore';
 import { db, auth, storage2 } from '../firebase';
@@ -14,7 +14,8 @@ import {
     FileText, UploadCloud, ExternalLink
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import MainLayout from '../components/MainLayout';
 import { getUserApartments } from '../utils/apartmentUtils';
 
@@ -179,7 +180,7 @@ export default function ApartmentSettings({ user }) {
             setLoading(false);
         }
         loadData();
-    }, [user, activeAptId, isAddMode]);
+    }, [user, activeAptId, isAddMode, amenities, showToast]);
 
     useEffect(() => {
         if (!user || !activeAptId || activeAptId === 'all') {
@@ -273,9 +274,9 @@ export default function ApartmentSettings({ user }) {
 
     const handleCopyLoginLink = () => {
         if (!activeAptId || activeAptId === 'all') return;
-        const link = `${window.location.origin}/tenant-login?aptId=${activeAptId}`;
+        const link = `${window.location.origin}/join-tenant/${activeAptId}`;
         navigator.clipboard.writeText(link);
-        showToast('คัดลอกลิงก์หน้าล็อกอินแล้ว', 'success');
+        showToast('คัดลอกลิงก์สำหรับผู้เช่า (ลงทะเบียน) แล้ว', 'success');
     };
 
     const handleAptSwitch = (id) => {
@@ -635,7 +636,7 @@ export default function ApartmentSettings({ user }) {
                                                                 className="flex items-center mx-auto px-3 py-1.5 bg-brand-orange-500/10 text-brand-orange-500 rounded-lg hover:bg-brand-orange-500/20 transition-all text-[10px] font-bold border border-brand-orange-500/20"
                                                             >
                                                                 <LinkIcon size={12} className="mr-1.5" />
-                                                                คัดลอกลิงก์หน้า Login หอพัก
+                                                                คัดลอกลิงก์สำหรับผู้เช่า (ลงทะเบียน)
                                                             </button>
                                                         )}
                                                     </div>
