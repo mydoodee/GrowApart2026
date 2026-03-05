@@ -1,0 +1,528 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+    collection, query, where, getDocs, doc, setDoc,
+    serverTimestamp, getDoc
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import { getUserApartments } from '../utils/apartmentUtils';
+import MainLayout from '../components/MainLayout';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
+import {
+    Zap, Droplets, ChevronDown, ChevronRight,
+    Save, Check, Loader2, Building, AlertCircle, User,
+    Calendar, List, Download, CreditCard, Printer,
+    ChevronLeft, CheckCircle2, Clock, Info, Banknote, FileText, X
+} from 'lucide-react';
+
+const thMonthsFull = [
+    "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+];
+
+export default function MonthlyBilling({ user }) {
+    const navigate = useNavigate();
+    const { toast, showToast, hideToast } = useToast();
+
+    // --- State ---
+    const [profile, setProfile] = useState(null);
+    const [apartments, setApartments] = useState([]);
+    const [activeAptId, setActiveAptId] = useState(localStorage.getItem('activeApartmentId'));
+    const [loading, setLoading] = useState(true);
+    const [issuing, setIssuing] = useState({}); // { roomNumber: true/false }
+    const [issuingAll, setIssuingAll] = useState(false);
+
+    const now = new Date();
+    const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
+    const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+
+    const [rooms, setRooms] = useState([]);
+    const [meterReadings, setMeterReadings] = useState({}); // { roomNumber: { electricity: {}, water: {} } }
+    const [existingPayments, setExistingPayments] = useState({}); // { roomNumber: paymentDoc }
+    const [verifyingPayment, setVerifyingPayment] = useState(null); // Payment doc to verify
+
+    const monthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+
+    // --- Load Data ---
+    const loadData = useCallback(async () => {
+        if (!user || !activeAptId || activeAptId === 'all') {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        try {
+            // profile
+            const profSnap = await getDoc(doc(db, 'users', user.uid));
+            if (profSnap.exists()) setProfile(profSnap.data());
+
+            // apartments
+            const apps = await getUserApartments(db, user);
+            setApartments(apps);
+
+            const apt = apps.find(a => a.id === activeAptId);
+            if (!apt) { setLoading(false); return; }
+
+            // 1. Load Rooms
+            const rSnap = await getDocs(query(collection(db, 'rooms'), where('apartmentId', '==', activeAptId)));
+            const roomList = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setRooms(roomList);
+
+            // 2. Load Meter Readings for the month
+            const mSnap = await getDocs(query(
+                collection(db, 'meterReadings'),
+                where('apartmentId', '==', activeAptId),
+                where('monthKey', '==', monthKey)
+            ));
+            const mMap = {};
+            mSnap.docs.forEach(d => {
+                const data = d.data();
+                if (!mMap[data.roomNumber]) mMap[data.roomNumber] = {};
+                mMap[data.roomNumber][data.type] = data;
+            });
+            setMeterReadings(mMap);
+
+            // 3. Load Existing Payments for the month
+            const pSnap = await getDocs(query(
+                collection(db, 'payments'),
+                where('apartmentId', '==', activeAptId),
+                where('month', '==', monthKey),
+                where('type', '==', 'monthly_bill')
+            ));
+            const pMap = {};
+            pSnap.docs.forEach(d => {
+                pMap[d.data().roomNumber] = { id: d.id, ...d.data() };
+            });
+            setExistingPayments(pMap);
+
+        } catch (e) {
+            console.error(e);
+            showToast('โหลดข้อมูลล้มเหลว', 'error');
+        }
+        setLoading(false);
+    }, [user, activeAptId, monthKey]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const handleAptSwitch = (id) => {
+        localStorage.setItem('activeApartmentId', id);
+        setActiveAptId(id);
+    };
+
+    const calculateBill = (room) => {
+        const meters = meterReadings[room.roomNumber] || {};
+        const elec = meters.electricity || null;
+        const water = meters.water || null;
+
+        const rent = room.price || 0;
+        const elecAmount = elec?.amount || 0;
+        const waterAmount = water?.amount || 0;
+        const fixedSum = (room.fixedExpenses || [])
+            .filter(ex => ex.active)
+            .reduce((sum, ex) => sum + (ex.amount || 0), 0);
+
+        const total = rent + elecAmount + waterAmount + fixedSum;
+
+        return {
+            rent,
+            electricity: {
+                units: elec?.units || 0,
+                amount: elecAmount,
+                old: elec?.oldReading || 0,
+                new: elec?.newReading || 0
+            },
+            water: {
+                units: water?.units || 0,
+                amount: waterAmount,
+                old: water?.oldReading || 0,
+                new: water?.newReading || 0
+            },
+            fixedExpenses: (room.fixedExpenses || []).filter(ex => ex.active),
+            total
+        };
+    };
+
+    const issueBill = async (room) => {
+        if (!room.tenantId) return;
+        const bill = calculateBill(room);
+
+        setIssuing(prev => ({ ...prev, [room.roomNumber]: true }));
+        try {
+            const paymentId = `bill_${activeAptId}_${room.roomNumber}_${monthKey}`;
+            await setDoc(doc(db, 'payments', paymentId), {
+                apartmentId: activeAptId,
+                roomNumber: room.roomNumber,
+                tenantId: room.tenantId,
+                tenantName: room.tenantName || 'ไม่ระบุ',
+                month: monthKey,
+                type: 'monthly_bill',
+                status: 'pending',
+                amount: bill.total,
+                details: {
+                    rent: bill.rent,
+                    electricity: bill.electricity,
+                    water: bill.water,
+                    fixedExpenses: bill.fixedExpenses
+                },
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+
+            setExistingPayments(prev => ({
+                ...prev,
+                [room.roomNumber]: { id: paymentId, status: 'pending', amount: bill.total }
+            }));
+            showToast(`ออกบิลห้อง ${room.roomNumber} เรียบร้อย`, 'success');
+        } catch (e) {
+            console.error(e);
+            showToast('ออกบิลล้มเหลว', 'error');
+        }
+        setIssuing(prev => ({ ...prev, [room.roomNumber]: false }));
+    };
+
+    const handleVerifyPayment = async (status) => {
+        if (!verifyingPayment) return;
+        try {
+            const payRef = doc(db, 'payments', verifyingPayment.id);
+            await setDoc(payRef, {
+                status: status,
+                verifiedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            setExistingPayments(prev => ({
+                ...prev,
+                [verifyingPayment.roomNumber]: { ...prev[verifyingPayment.roomNumber], status: status }
+            }));
+
+            showToast(status === 'paid' ? 'ยืนยันการชำระเงินเรียบร้อย' : 'ปฏิเสธการชำระเงินแล้ว', 'success');
+            setVerifyingPayment(null);
+        } catch (e) {
+            console.error(e);
+            showToast('เกิดข้อผิดพลาด', 'error');
+        }
+    };
+
+    const issueAllReady = async () => {
+        const readyRooms = rooms.filter(r => {
+            if (!r.tenantId) return false;
+            if (existingPayments[r.roomNumber]) return false;
+            const meters = meterReadings[r.roomNumber] || {};
+            return meters.electricity && meters.water;
+        });
+
+        if (readyRooms.length === 0) {
+            showToast('ไม่มีห้องที่พร้อมออกบิล', 'info');
+            return;
+        }
+
+        setIssuingAll(true);
+        let successCount = 0;
+        for (const room of readyRooms) {
+            try {
+                const bill = calculateBill(room);
+                const paymentId = `bill_${activeAptId}_${room.roomNumber}_${monthKey}`;
+                await setDoc(doc(db, 'payments', paymentId), {
+                    apartmentId: activeAptId,
+                    roomNumber: room.roomNumber,
+                    tenantId: room.tenantId,
+                    tenantName: room.tenantName || 'ไม่ระบุ',
+                    month: monthKey,
+                    type: 'monthly_bill',
+                    status: 'pending',
+                    amount: bill.total,
+                    details: {
+                        rent: bill.rent,
+                        electricity: bill.electricity,
+                        water: bill.water,
+                        fixedExpenses: bill.fixedExpenses
+                    },
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+                successCount++;
+            } catch (e) {
+                console.error(`Failed to issue bill for ${room.roomNumber}:`, e);
+            }
+        }
+
+        loadData(); // Refresh all
+        setIssuingAll(false);
+        showToast(`ออกบิลสำเร็จ ${successCount} ห้อง`, 'success');
+    };
+
+    if (loading && !rooms.length) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-brand-bg">
+                <Loader2 className="w-10 h-10 text-brand-orange-500 animate-spin" />
+            </div>
+        );
+    }
+
+    const occupiedRooms = rooms.filter(r => r.tenantId);
+    const readyToIssue = occupiedRooms.filter(r => {
+        const meters = meterReadings[r.roomNumber] || {};
+        return meters.electricity && meters.water && !existingPayments[r.roomNumber];
+    });
+    const alreadyIssued = occupiedRooms.filter(r => existingPayments[r.roomNumber]);
+    const paidCount = occupiedRooms.filter(r => existingPayments[r.roomNumber]?.status === 'paid').length;
+
+    return (
+        <MainLayout
+            profile={profile}
+            apartments={apartments}
+            activeAptId={activeAptId}
+            onAptSwitch={handleAptSwitch}
+            title="ออกบิลรายเดือน"
+        >
+            <Toast {...toast} onClose={hideToast} />
+
+            <div className="px-4 lg:px-6 py-6 max-w-5xl mx-auto w-full space-y-6">
+
+                {/* Header Actions */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1 bg-brand-card/50 p-1 rounded-xl border border-white/5">
+                            <button
+                                onClick={() => {
+                                    if (selectedMonth === 0) { setSelectedMonth(11); setSelectedYear(y => y - 1); }
+                                    else setSelectedMonth(m => m - 1);
+                                }}
+                                className="p-2 hover:bg-white/5 rounded-lg text-brand-gray-400 hover:text-white transition-colors"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <div className="px-3 py-1 text-center min-w-[120px]">
+                                <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">{selectedYear + 543}</p>
+                                <p className="text-sm font-black text-white">{thMonthsFull[selectedMonth]}</p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    if (selectedMonth === 11) { setSelectedMonth(0); setSelectedYear(y => y + 1); }
+                                    else setSelectedMonth(m => m + 1);
+                                }}
+                                className="p-2 hover:bg-white/5 rounded-lg text-brand-gray-400 hover:text-white transition-colors"
+                            >
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={issueAllReady}
+                        disabled={issuingAll || readyToIssue.length === 0}
+                        className="flex items-center justify-center gap-2 bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-30 text-brand-bg px-6 py-3 rounded-2xl font-bold text-sm shadow-xl shadow-brand-orange-500/20 transition-all active:scale-95"
+                    >
+                        {issuingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                        ออกบิลทั้งหมด ({readyToIssue.length})
+                    </button>
+                </div>
+
+                {/* Summary Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {[
+                        { label: 'ห้องที่มีผู้เช่า', value: occupiedRooms.length, icon: <User />, color: 'text-blue-400' },
+                        { label: 'เก็บมิเตอร์แล้ว', value: occupiedRooms.filter(r => (meterReadings[r.roomNumber]?.electricity && meterReadings[r.roomNumber]?.water)).length, icon: <Zap />, color: 'text-yellow-400' },
+                        { label: 'พร้อมออกบิล', value: readyToIssue.length, icon: <CheckCircle2 />, color: 'text-emerald-400' },
+                        { label: 'ออกบิลแล้ว', value: alreadyIssued.length, icon: <FileText />, color: 'text-brand-orange-400' },
+                        { label: 'ชำระแล้ว', value: paidCount, icon: <CheckCircle2 />, color: 'text-emerald-500' },
+                    ].map((s, idx) => (
+                        <div key={idx} className="bg-brand-card/40 border border-white/8 p-4 rounded-2xl">
+                            <div className={`w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center mb-3 ${s.color}`}>
+                                {React.cloneElement(s.icon, { size: 16 })}
+                            </div>
+                            <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-wider">{s.label}</p>
+                            <p className="text-xl font-black text-white mt-1">{s.value} <span className="text-xs font-medium text-brand-gray-600">ห้อง</span></p>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Room List */}
+                <div className="bg-brand-card/40 border border-white/8 rounded-3xl overflow-hidden">
+                    <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-white/5">
+                                    <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ห้อง / ผู้เช่า</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">สถานะมิเตอร์</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest text-right">ค่าเช่า + อื่นๆ</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest text-right">รวมทั้งสิ้น</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest text-center">สถานะบิล</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                                {occupiedRooms.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="6" className="px-6 py-20 text-center">
+                                            <Building className="w-10 h-10 text-brand-gray-700 mx-auto mb-4 opacity-20" />
+                                            <p className="text-brand-gray-500 font-medium">ไม่มีห้องที่มีผู้เช่า</p>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    occupiedRooms.map(room => {
+                                        const meters = meterReadings[room.roomNumber] || {};
+                                        const bill = calculateBill(room);
+                                        const payment = existingPayments[room.roomNumber];
+                                        const isMetersComplete = meters.electricity && meters.water;
+                                        const isIssuing = issuing[room.roomNumber];
+
+                                        return (
+                                            <tr key={room.id} className="hover:bg-white/[0.02] transition-colors group">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-xl bg-brand-orange-500/10 flex items-center justify-center text-brand-orange-500 font-bold text-xs shrink-0">
+                                                            {room.roomNumber}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-bold text-white truncate">{room.tenantName}</p>
+                                                            <p className="text-[10px] text-brand-gray-500">ชั้น {room.floor}</p>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`flex items-center gap-1 text-[10px] font-bold ${meters.electricity ? 'text-yellow-400' : 'text-brand-gray-700'}`}>
+                                                            <Zap className="w-3.5 h-3.5" /> {meters.electricity ? 'OK' : 'NO'}
+                                                        </div>
+                                                        <div className={`flex items-center gap-1 text-[10px] font-bold ${meters.water ? 'text-blue-400' : 'text-brand-gray-700'}`}>
+                                                            <Droplets className="w-3.5 h-3.5" /> {meters.water ? 'OK' : 'NO'}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <p className="text-xs font-bold text-brand-gray-400">
+                                                        {calculateBill(room).rent.toLocaleString()} + {(calculateBill(room).total - calculateBill(room).rent).toLocaleString()}
+                                                    </p>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <p className="text-sm font-black text-white">{bill.total.toLocaleString()} บ.</p>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    {payment ? (
+                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${payment.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                                            payment.status === 'waiting_verification' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                                                                'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'}`}>
+                                                            {payment.status === 'paid' ? <CheckCircle2 size={10} /> : payment.status === 'waiting_verification' ? <Clock size={10} /> : <Clock size={10} />}
+                                                            {payment.status === 'paid' ? 'ชำระแล้ว' : payment.status === 'waiting_verification' ? 'รอตรวจสอบ' : 'ค้างชำระ'}
+                                                        </span>
+                                                    ) : isMetersComplete ? (
+                                                        <span className="text-[9px] font-black text-emerald-400/50 uppercase tracking-widest italic">พร้อมออกบิล</span>
+                                                    ) : (
+                                                        <span className="text-[9px] font-black text-brand-gray-700 uppercase tracking-widest">รอมิเตอร์</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex justify-center gap-2">
+                                                        {payment ? (
+                                                            <>
+                                                                {payment.status === 'waiting_verification' && (
+                                                                    <button
+                                                                        onClick={() => setVerifyingPayment(payment)}
+                                                                        className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-400 text-brand-bg px-3 py-1.5 rounded-xl text-[10px] font-black transition-all active:scale-95 shadow-lg shadow-orange-500/20"
+                                                                    >
+                                                                        <Check size={14} /> ตรวจสอบสลิป
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => navigate(`/rooms?room=${room.roomNumber}`)}
+                                                                    className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-brand-gray-400 hover:text-white transition-all"
+                                                                    title="ดูรายละเอียด"
+                                                                >
+                                                                    <ChevronRight className="w-4 h-4" />
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => issueBill(room)}
+                                                                disabled={!isMetersComplete || isIssuing}
+                                                                className="flex items-center gap-2 bg-brand-orange-500/10 hover:bg-brand-orange-500 border border-brand-orange-500/20 text-brand-orange-500 hover:text-brand-bg px-4 py-1.5 rounded-xl text-[10px] font-black transition-all active:scale-95 disabled:opacity-20 disabled:cursor-not-allowed group-hover:shadow-lg group-hover:shadow-brand-orange-500/10"
+                                                            >
+                                                                {isIssuing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                                                ออกบิล
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Info Card */}
+                <div className="bg-blue-500/5 border border-blue-500/10 p-5 rounded-3xl flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0 mt-0.5">
+                        <Info size={20} />
+                    </div>
+                    <div>
+                        <h4 className="text-sm font-bold text-white mb-1">คำแนะนำการใช้งาน</h4>
+                        <ul className="text-xs text-brand-gray-500 space-y-1.5 font-medium leading-relaxed">
+                            <li className="flex items-center gap-2"><div className="w-1 h-1 bg-blue-500 rounded-full" /> ตรวจสอบว่าได้บันทึกมิเตอร์น้ำและไฟในหน้า <button onClick={() => navigate('/meters')} className="text-blue-400 hover:underline">เก็บมิเตอร์</button> ครบถ้วนแล้ว</li>
+                            <li className="flex items-center gap-2"><div className="w-1 h-1 bg-blue-500 rounded-full" /> เมื่อออกบิลแล้ว ผู้เช่าจะได้รับการแจ้งเตือนและสามารถดูยอดชำระในหน้า Dashboard ของตนเองได้ทันที</li>
+                            <li className="flex items-center gap-2"><div className="w-1 h-1 bg-blue-500 rounded-full" /> บิลที่ออกแล้วจะไม่สามารถแก้ไขมิเตอร์ของเดือนนั้นได้อีก (เพื่อป้องกันข้อมูลคลาดเคลื่อน)</li>
+                        </ul>
+                    </div>
+                </div>
+
+            </div>
+
+            {/* Slip Verification Modal */}
+            {verifyingPayment && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setVerifyingPayment(null)} />
+                    <div className="relative bg-brand-card w-full max-w-lg rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-white">ตรวจสอบหลักฐานการโอนเงิน</h3>
+                            <button onClick={() => setVerifyingPayment(null)} className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-brand-gray-400">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <div className="mb-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div>
+                                        <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ห้อง {verifyingPayment.roomNumber}</p>
+                                        <p className="text-sm font-bold text-white">{verifyingPayment.tenantName || 'ไม่ระบุชื่อ'}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ยอดที่ต้องชำระ</p>
+                                        <p className="text-lg font-black text-brand-orange-500">{verifyingPayment.amount?.toLocaleString()} บาท</p>
+                                    </div>
+                                </div>
+                                <div className="bg-black/20 rounded-2xl overflow-hidden border border-white/5 max-h-[400px] flex items-center justify-center">
+                                    {verifyingPayment.slipUrl ? (
+                                        <img src={verifyingPayment.slipUrl} alt="Transfer Slip" className="max-w-full max-h-full object-contain" />
+                                    ) : (
+                                        <div className="py-20 text-center">
+                                            <AlertCircle className="w-10 h-10 text-brand-gray-700 mx-auto mb-2" />
+                                            <p className="text-brand-gray-500 text-xs">ไม่พบรูปภาพสลิป</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => handleVerifyPayment('paid')}
+                                    className="flex-1 py-4 bg-emerald-500 hover:bg-emerald-400 text-brand-bg rounded-2xl font-black uppercase tracking-wider text-xs shadow-xl shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle2 size={16} /> ได้รับเงินถูกต้อง
+                                </button>
+                                <button
+                                    onClick={() => handleVerifyPayment('pending')}
+                                    className="flex-1 py-4 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-brand-bg border border-red-500/20 rounded-2xl font-black uppercase tracking-wider text-xs active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <X size={16} /> ปฏิเสธสลิป
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </MainLayout>
+    );
+}
