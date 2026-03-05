@@ -8,7 +8,8 @@ import {
     Search, X, User, Clock, Home, LayoutGrid, CalendarDays, Banknote, Phone, Mail,
     Printer, History, ChevronRight, ChevronLeft, Building
 } from 'lucide-react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import MainLayout from '../components/MainLayout';
 import { getUserApartments } from '../utils/apartmentUtils';
 
@@ -84,7 +85,9 @@ export default function TenantHistory({ user }) {
             }
         };
         load().catch(err => { console.error(err); setLoading(false); });
-    }, [user, activeAptId]);
+    }, [user, activeAptId, showToast]);
+
+    const LayoutComponent = isTenant ? ({ children }) => <div className="min-h-screen bg-brand-bg text-brand-text flex flex-col">{children}</div> : MainLayout;
 
     // ── Printing Logic ───────────────────────────────────────────────────────
     const handlePrintYearSummary = async (year) => {
@@ -228,7 +231,7 @@ export default function TenantHistory({ user }) {
         </div>
     );
 
-    const LayoutComponent = isTenant ? ({ children }) => <div className="min-h-screen bg-brand-bg text-brand-text flex flex-col">{children}</div> : MainLayout;
+
 
     return (
         <LayoutComponent profile={profile} apartments={apartments} activeAptId={activeAptId} onAptSwitch={handleAptSwitch} title="ประวัติการเช่า">

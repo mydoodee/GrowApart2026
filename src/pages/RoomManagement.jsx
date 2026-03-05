@@ -6,7 +6,8 @@ import {
     Home, Save, X, LayoutGrid, Check, Zap, Droplets,
     Search, ChevronDown, Loader2, DoorOpen, User, ExternalLink
 } from 'lucide-react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import MainLayout from '../components/MainLayout';
 import { getUserApartments } from '../utils/apartmentUtils';
 
@@ -36,11 +37,32 @@ export default function RoomManagement({ user }) {
     const [activeAptId, setActiveAptId] = useState(localStorage.getItem('activeApartmentId'));
     const [rooms, setRooms] = useState([]);
     const [selectedRoom, setSelectedRoom] = useState(null);
-    const [pendingAutoSelect, setPendingAutoSelect] = useState(searchParams.get('room'));
+
 
     // Filter states
     const [filterFloor, setFilterFloor] = useState('all');
     const [search, setSearch] = useState('');
+
+    const generateRoomsFromConfig = (apt) => {
+        const generated = [];
+        if (apt.floors) {
+            apt.floors.forEach(floor => {
+                for (let i = 1; i <= floor.roomCount; i++) {
+                    const roomNo = `${floor.id}${i.toString().padStart(2, '0')}`;
+                    generated.push({
+                        apartmentId: apt.id,
+                        roomNumber: roomNo,
+                        floor: floor.id,
+                        status: 'ว่าง',
+                        price: apt.utilityRates?.baseRent || 0,
+                        amenities: apt.amenities || [],
+                        fixedExpenses: apt.fixedExpenses?.map(fe => ({ ...fe, active: true })) || []
+                    });
+                }
+            });
+        }
+        return generated;
+    };
 
     // Detail panel sections
     const [showAmenities, setShowAmenities] = useState(false);
@@ -186,7 +208,7 @@ export default function RoomManagement({ user }) {
         return () => {
             if (unsubscribe) unsubscribe();
         };
-    }, [user, activeAptId]);
+    }, [user, activeAptId, showToast]);
 
     // Deep linking: Auto-select room from URL param
     useEffect(() => {
@@ -200,7 +222,10 @@ export default function RoomManagement({ user }) {
             );
 
             if (target) {
-                setSelectedRoom(target);
+                setSelectedRoom(prev => {
+                    if (prev?.roomNumber === target.roomNumber && prev?.apartmentId === target.apartmentId) return prev;
+                    return target;
+                });
                 // Ensure the floor filter doesn't hide the selected room
                 if (filterFloor !== 'all' && target.floor !== parseInt(filterFloor)) {
                     setFilterFloor('all');
@@ -212,28 +237,9 @@ export default function RoomManagement({ user }) {
                 setSearchParams(newParams, { replace: true });
             }
         }
-    }, [loading, rooms, searchParams]);
+    }, [loading, rooms, searchParams, filterFloor, setSearchParams]);
 
-    const generateRoomsFromConfig = (apt) => {
-        const generated = [];
-        if (apt.floors) {
-            apt.floors.forEach(floor => {
-                for (let i = 1; i <= floor.roomCount; i++) {
-                    const roomNo = `${floor.id}${i.toString().padStart(2, '0')}`;
-                    generated.push({
-                        apartmentId: apt.id,
-                        roomNumber: roomNo,
-                        floor: floor.id,
-                        status: 'ว่าง',
-                        price: apt.utilityRates?.baseRent || 0,
-                        amenities: apt.amenities || [],
-                        fixedExpenses: apt.fixedExpenses?.map(fe => ({ ...fe, active: true })) || []
-                    });
-                }
-            });
-        }
-        return generated;
-    };
+
 
     const handleAptSwitch = (id) => {
         localStorage.setItem('activeApartmentId', id);
@@ -505,7 +511,6 @@ export default function RoomManagement({ user }) {
                                             <div className="grid grid-cols-4 gap-1.5">
                                                 {['ว่าง', 'ไม่ว่าง', 'แจ้งซ่อม', 'จอง'].map(st => {
                                                     const isActive = normalizeStatus(selectedRoom.status) === st;
-                                                    const stStyle = STATUS_COLORS[st];
                                                     return (
                                                         <button
                                                             key={st}

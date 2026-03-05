@@ -4,7 +4,8 @@ import { doc, getDoc, setDoc, collection, addDoc, query, where, getDocs, serverT
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { Building, User, CheckCircle2, Loader2, Mail, Phone, Lock, Eye, EyeOff } from 'lucide-react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 
 const GoogleIcon = () => (
     <svg className="w-4 h-4 mr-3" viewBox="0 0 48 48">
@@ -123,7 +124,7 @@ export default function TenantJoinGeneral({ user }) {
                 let authEmail = email;
                 if (authMethod === 'phone') {
                     if (!phone || phone.length < 9) { showToast('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (9-10 หลัก)', 'error'); setSubmitting(false); return; }
-                    authEmail = `${phone.replace(/\D/g, '')}@growapart.system`;
+                    authEmail = `${phone.replace(/\D/g, '')} @growapart.system`;
                 } else {
                     if (!email || !email.includes('@')) { showToast('กรุณากรอกอีเมลให้ถูกต้อง', 'error'); setSubmitting(false); return; }
                     authEmail = email;
@@ -190,8 +191,12 @@ export default function TenantJoinGeneral({ user }) {
 
             <div className="max-w-md w-full bg-brand-card rounded-xl p-8 shadow-lg border border-white/10 relative z-10">
                 <div className="text-center mb-10">
-                    <div className="w-16 h-16 bg-brand-orange-500/20 rounded-2xl flex items-center justify-center text-brand-orange-500 mx-auto mb-4 border border-brand-orange-500/30">
-                        <Building className="w-8 h-8" />
+                    <div className="w-16 h-16 bg-brand-orange-500/20 rounded-2xl flex items-center justify-center text-brand-orange-500 mx-auto mb-4 border border-brand-orange-500/30 overflow-hidden">
+                        {apartment?.general?.logoURL ? (
+                            <img src={apartment.general.logoURL} alt="Apartment Logo" className="w-full h-full object-cover" />
+                        ) : (
+                            <Building className="w-8 h-8" />
+                        )}
                     </div>
                     <h1 className="text-2xl font-bold text-white mb-1 uppercase tracking-tight">{apartment?.general?.name || 'ลงทะเบียนผู้เช่า'}</h1>
                     <p className="text-brand-gray-500 font-bold text-xs tracking-wide">TENANT REGISTRATION</p>
@@ -208,7 +213,7 @@ export default function TenantJoinGeneral({ user }) {
                     <div className="space-y-6">
                         {!user && (
                             <>
-                                <div className="flex bg-brand-bg rounded-xl p-1 border border-white/5">
+                                <div className="flex w-full bg-brand-bg rounded-xl p-1 border border-white/5">
                                     <button onClick={() => setAuthMethod('phone')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${authMethod === 'phone' ? 'bg-brand-card text-brand-orange-500 shadow-sm' : 'text-brand-gray-400'}`}>เบอร์โทรศัพท์</button>
                                     <button onClick={() => setAuthMethod('email')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${authMethod === 'email' ? 'bg-brand-card text-brand-orange-500 shadow-sm' : 'text-brand-gray-400'}`}>อีเมล</button>
                                 </div>

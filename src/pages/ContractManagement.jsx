@@ -8,12 +8,12 @@ import { db, storage2 } from '../firebase';
 import {
     FileText, UploadCloud, ExternalLink, Loader2, Plus, Info, Save
 } from 'lucide-react';
-import Toast, { useToast } from '../components/Toast';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import MainLayout from '../components/MainLayout';
 import { getUserApartments } from '../utils/apartmentUtils';
 
 export default function ContractManagement({ user }) {
-    const navigate = useNavigate();
     const { toast, showToast, hideToast } = useToast();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -58,7 +58,7 @@ export default function ContractManagement({ user }) {
             setLoading(false);
         }
         loadData();
-    }, [user, activeAptId]);
+    }, [user, activeAptId, showToast]);
 
     const handleAptSwitch = (id) => {
         localStorage.setItem('activeApartmentId', id);
