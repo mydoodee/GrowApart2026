@@ -131,9 +131,8 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
                 ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}
             `}>
                 <div className="h-12 flex items-center justify-between px-4 border-b border-white/10 md:border-none">
-                    <div className="flex items-center">
-                        <Building className="w-5 h-5 text-brand-orange-500 mr-2.5" />
-                        <span className="text-xl font-bold text-white tracking-tight">GrowApart</span>
+                    <div className="flex items-center h-full">
+                        <img src="/logo.png" alt="GrowApart Logo" className="h-7 w-auto object-contain" />
                     </div>
                     <button onClick={() => setIsMenuOpen(false)} className="md:hidden text-white p-2">
                         <X className="w-5 h-5" />

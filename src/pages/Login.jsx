@@ -245,9 +245,8 @@ export default function Login({ user }) {
         <div className="flex justify-center mb-5">
           <div className="relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-brand-orange-500 to-brand-orange-400 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-            <div className="relative flex items-center space-x-1 text-5xl font-bold tracking-tighter bg-brand-card px-4 py-2 rounded-xl border border-white/10">
-              <span className="text-white">L</span>
-              <span className="text-brand-orange-500">K</span>
+            <div className="relative flex items-center justify-center bg-brand-card px-4 py-2 rounded-xl border border-white/10 overflow-hidden">
+              <img src="/logo.png" alt="GrowApart Logo" className="h-12 w-auto object-contain" />
             </div>
           </div>
         </div>

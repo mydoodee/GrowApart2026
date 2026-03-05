@@ -180,7 +180,7 @@ export default function ApartmentSettings({ user }) {
             setLoading(false);
         }
         loadData();
-    }, [user, activeAptId, isAddMode, amenities, showToast]);
+    }, [user, activeAptId, isAddMode]);
 
     useEffect(() => {
         if (!user || !activeAptId || activeAptId === 'all') {

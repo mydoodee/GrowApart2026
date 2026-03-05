@@ -74,8 +74,8 @@ export default function BuildingPicker({ user }) {
         <div className="min-h-screen bg-brand-bg text-white flex flex-col items-center justify-center p-4 bg-[radial-gradient(circle_at_top_right,rgba(230,126,34,0.05),transparent),radial-gradient(circle_at_bottom_left,rgba(230,126,34,0.05),transparent)]">
             <div className="max-w-4xl w-full text-center space-y-10">
                 <div className="space-y-4">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-orange-500/10 rounded-xl mb-4 border border-brand-orange-500/20">
-                        <Building className="w-8 h-8 text-brand-orange-500" />
+                    <div className="inline-flex items-center justify-center mb-4">
+                        <img src="/logo.png" alt="GrowApart Logo" className="h-16 w-auto object-contain" />
                     </div>
                     <h1 className="text-2xl font-bold tracking-tight mb-2">ยินดีต้อนรับสู่ <span className="text-brand-orange-500">GrowApart</span></h1>
                     <p className="text-brand-gray-400 font-bold">เลือกตึกที่ต้องการจัดการ (เลือกได้มากกว่า 1 ตึก)</p>
