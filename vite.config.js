@@ -6,23 +6,11 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [
     tailwindcss(),
-    react({
-      babel: {
-        plugins: [
-          // other Babel plugins
-          [
-            "@locator/babel-jsx/dist",
-            {
-              env: "development",
-            },
-          ],
-        ],
-      },
-    }),
+    react(),
   ],
   server: {
     headers: {
-      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+      "Cross-Origin-Opener-Policy": "unsafe-none",
     },
   },
 });
