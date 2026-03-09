@@ -149,7 +149,7 @@ export default function TenantJoin({ user, userRole }) {
                 let authEmail = email;
                 if (authMethod === 'phone') {
                     if (!phone) { showToast('กรุณากรอกเบอร์โทรศัพท์', 'error'); setSubmitting(false); return; }
-                    authEmail = `${phone.replace(/\D/g, '')}@growapart.system`;
+                    authEmail = `${phone.replace(/\D/g, '')}@rentara.system`;
                 } else if (!email) {
                     showToast('กรุณากรอกอีเมล', 'error'); setSubmitting(false); return;
                 }

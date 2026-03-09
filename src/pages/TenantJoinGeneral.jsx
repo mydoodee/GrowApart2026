@@ -114,6 +114,33 @@ export default function TenantJoinGeneral({ user }) {
         setSubmitting(false);
     };
 
+    const handleGoogleAuth = async () => {
+        setSubmitting(true);
+        try {
+            const provider = new GoogleAuthProvider();
+            const result = await signInWithPopup(auth, provider);
+            const currentUser = result.user;
+
+            // Ensure user doc exists
+            const userRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            if (!userSnap.exists()) {
+                await setDoc(userRef, {
+                    name: currentUser.displayName || 'ผู้เช่า',
+                    email: currentUser.email || '',
+                    role: 'tenant',
+                    createdAt: serverTimestamp()
+                });
+            }
+            localStorage.setItem('loginContext', 'tenant');
+            await submitJoinRequest(currentUser);
+        } catch (error) {
+            console.error(error);
+            showToast('ล็อกอินด้วย Google ล้มเหลว', 'error');
+            setSubmitting(false);
+        }
+    };
+
     const handleAuthAndJoin = async (e) => {
         e.preventDefault();
         setSubmitting(true);
@@ -121,10 +148,16 @@ export default function TenantJoinGeneral({ user }) {
 
         try {
             if (!currentUser) {
+                // Phone is now mandatory for BOTH methods
+                if (!phone || phone.replace(/\D/g, '').length < 9) {
+                    showToast('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (9-10 หลัก)', 'error');
+                    setSubmitting(false);
+                    return;
+                }
+
                 let authEmail = email;
                 if (authMethod === 'phone') {
-                    if (!phone || phone.length < 9) { showToast('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (9-10 หลัก)', 'error'); setSubmitting(false); return; }
-                    authEmail = `${phone.replace(/\D/g, '')} @growapart.system`;
+                    authEmail = `${phone.replace(/\D/g, '')}@rentara.system`;
                 } else {
                     if (!email || !email.includes('@')) { showToast('กรุณากรอกอีเมลให้ถูกต้อง', 'error'); setSubmitting(false); return; }
                     authEmail = email;
@@ -154,7 +187,7 @@ export default function TenantJoinGeneral({ user }) {
                             await setDoc(doc(db, 'users', currentUser.uid), {
                                 name: name || 'ผู้เช่า',
                                 email: authMethod === 'email' ? authEmail : '',
-                                phone: authMethod === 'phone' ? phone : '',
+                                phone: phone,
                                 role: 'tenant',
                                 createdAt: serverTimestamp()
                             });
@@ -173,11 +206,16 @@ export default function TenantJoinGeneral({ user }) {
                 }
             }
             if (currentUser) {
+                console.log("[Join] Proceeding with join for user:", currentUser.uid);
                 await submitJoinRequest(currentUser);
             }
         } catch (error) {
-            console.error(error);
-            showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
+            console.error("[Join] Fatal error in handleAuthAndJoin:", error);
+            if (error.message?.includes('BLOCKED_BY_CLIENT')) {
+                showToast('การเชื่อมต่อถูกบล็อกโดยเบราว์เซอร์ (อาจเกิดจาก AdBlocker)', 'error');
+            } else {
+                showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
+            }
             setSubmitting(false);
         }
     };
@@ -238,10 +276,19 @@ export default function TenantJoinGeneral({ user }) {
                                                 <input type="tel" placeholder="08X-XXX-XXXX" value={phone} onChange={(e) => setPhone(e.target.value)} className="bg-transparent border-none text-white font-medium w-full outline-none placeholder:text-white/10 text-sm" required />
                                             </div>
                                         ) : (
-                                            <div className="flex items-center bg-white/5 rounded-xl px-4 py-3 border border-white/10 focus-within:border-brand-orange-500 transition-all">
-                                                <Mail className="w-4 h-4 text-white/20 mr-3 shrink-0" />
-                                                <input type="email" placeholder="example@mail.com" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-transparent border-none text-white font-medium w-full outline-none placeholder:text-white/10 text-sm" required />
-                                            </div>
+                                            <>
+                                                <div className="flex items-center bg-white/5 rounded-xl px-4 py-3 border border-white/10 focus-within:border-brand-orange-500 transition-all mb-4">
+                                                    <Mail className="w-4 h-4 text-white/20 mr-3 shrink-0" />
+                                                    <input type="email" placeholder="example@mail.com" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-transparent border-none text-white font-medium w-full outline-none placeholder:text-white/10 text-sm" required />
+                                                </div>
+                                                <div className="space-y-1 mt-4">
+                                                    <label className="text-[10px] font-bold text-brand-gray-500 uppercase px-1 tracking-widest">เบอร์โทรศัพท์ (จำเป็น)</label>
+                                                    <div className="flex items-center bg-white/5 rounded-xl px-4 py-3 border border-white/10 focus-within:border-brand-orange-500 transition-all">
+                                                        <Phone className="w-4 h-4 text-white/20 mr-3 shrink-0" />
+                                                        <input type="tel" placeholder="08X-XXX-XXXX" value={phone} onChange={(e) => setPhone(e.target.value)} className="bg-transparent border-none text-white font-medium w-full outline-none placeholder:text-white/10 text-sm" required />
+                                                    </div>
+                                                </div>
+                                            </>
                                         )}
                                     </div>
 

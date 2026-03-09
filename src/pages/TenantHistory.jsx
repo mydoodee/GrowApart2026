@@ -149,7 +149,7 @@ export default function TenantHistory({ user }) {
                             <p style="margin: 5px 0 0; color: #64748b;">ปีงบประมาณ ${year}</p>
                         </div>
                         <div style="text-align: right;">
-                            <p style="margin: 0; font-weight: bold;">GrowApart System</p>
+                            <p style="margin: 0; font-weight: bold;">Rentara System</p>
                             <p style="margin: 0; font-size: 12px; color: #94a3b8;">วันที่ออกเอกสาร: ${new Date().toLocaleDateString('th-TH')}</p>
                         </div>
                     </header>

@@ -89,6 +89,8 @@ export default function ApartmentSettings({ user }) {
     const [approvalWaterMeter, setApprovalWaterMeter] = useState(0);
     const [approvalElecMeter, setApprovalElecMeter] = useState(0);
     const [approvalDeposit, setApprovalDeposit] = useState(0);
+    const [approvalFloor, setApprovalFloor] = useState('');
+    const [selectedFloors, setSelectedFloors] = useState({});
     const [contractInfo, setContractInfo] = useState({ pdfURL: '', template: '' });
     const [uploadingContract, setUploadingContract] = useState(false);
 
@@ -1434,16 +1436,34 @@ export default function ApartmentSettings({ user }) {
                                                             <option value="staff">STAFF</option>
                                                         </select>
                                                     ) : !request.roomNumber && (
-                                                        <select
-                                                            value={selectedRooms[request.id] || ''}
-                                                            onChange={(e) => setSelectedRooms({ ...selectedRooms, [request.id]: e.target.value })}
-                                                            className="bg-brand-card text-brand-orange-500 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-white/10 outline-none max-w-[120px]"
-                                                        >
-                                                            <option value="">เลือกห้องพัก</option>
-                                                            {rooms.filter(r => r.status === 'ว่าง').map(r => (
-                                                                <option key={r.roomNumber} value={r.roomNumber}>ห้อง {r.roomNumber}</option>
-                                                            ))}
-                                                        </select>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <select
+                                                                value={selectedFloors[request.id] || ''}
+                                                                onChange={(e) => {
+                                                                    setSelectedFloors({ ...selectedFloors, [request.id]: e.target.value });
+                                                                    setSelectedRooms({ ...selectedRooms, [request.id]: '' });
+                                                                }}
+                                                                className="bg-brand-card text-brand-orange-500 text-[10px] font-bold px-2 py-1.5 rounded-lg border border-white/10 outline-none max-w-[80px]"
+                                                            >
+                                                                <option value="">ชั้น</option>
+                                                                {floors.map(f => (
+                                                                    <option key={f.id} value={f.id}>ชั้น {f.id}</option>
+                                                                ))}
+                                                            </select>
+                                                            <select
+                                                                value={selectedRooms[request.id] || ''}
+                                                                onChange={(e) => setSelectedRooms({ ...selectedRooms, [request.id]: e.target.value })}
+                                                                className="bg-brand-card text-brand-orange-500 text-[10px] font-bold px-2 py-1.5 rounded-lg border border-white/10 outline-none max-w-[90px]"
+                                                                disabled={!selectedFloors[request.id]}
+                                                            >
+                                                                <option value="">ห้อง</option>
+                                                                {selectedFloors[request.id] && rooms
+                                                                    .filter(r => r.status === 'ว่าง' && r.floor?.toString() === selectedFloors[request.id])
+                                                                    .map(r => (
+                                                                        <option key={r.roomNumber} value={r.roomNumber}>ห้อง {r.roomNumber}</option>
+                                                                    ))}
+                                                            </select>
+                                                        </div>
                                                     )}
                                                 </div>
                                                 <div className="flex gap-2">
@@ -1456,6 +1476,7 @@ export default function ApartmentSettings({ user }) {
                                                                 const initialRoomNo = request.roomNumber || selectedRooms[request.id] || '';
                                                                 const initialRoom = rooms.find(r => r.roomNumber === initialRoomNo);
                                                                 setApprovalRoom(initialRoom || null);
+                                                                setApprovalFloor(initialRoom?.floor?.toString() || '');
                                                                 setApprovalExpenses(initialRoom?.fixedExpenses || fixedExpenses.map(fe => ({ ...fe, active: fe.name !== 'ค่าจอดรถ' })));
                                                                 setApprovalAmenities(initialRoom?.amenities || amenities.map(am => ({ ...am, status: true })));
                                                                 setApprovalWaterMeter(initialRoom?.waterMeter || 0);
@@ -1590,33 +1611,58 @@ export default function ApartmentSettings({ user }) {
                         </div>
 
                         <div className="p-6 space-y-5 h-[60vh] overflow-y-auto custom-scrollbar">
-                            {/* Room Selection */}
-                            <div>
+                            {/* Room Selection — Floor first, then Room */}
+                            <div className="space-y-3">
                                 <label className="text-xs font-bold text-brand-gray-400 mb-2 block ml-1 uppercase">เลือกห้องพัก</label>
-                                <select
-                                    value={approvalRoom?.roomNumber || ''}
-                                    onChange={(e) => {
-                                        const r = rooms.find(rm => rm.roomNumber === e.target.value);
-                                        setApprovalRoom(r || null);
-                                        if (r) {
-                                            // ค่าบริการเริ่มต้น active: false ทั้งหมด ให้ user กดเปิดเอง
-                                            setApprovalExpenses(r.fixedExpenses
-                                                ? r.fixedExpenses.map(fe => ({ ...fe, active: false }))
-                                                : fixedExpenses.map(fe => ({ ...fe, active: false }))
-                                            );
-                                            setApprovalAmenities(r.amenities || amenities.map(am => ({ ...am, status: true })));
-                                            setApprovalWaterMeter(r.waterMeter || 0);
-                                            setApprovalElecMeter(r.electricityMeter || 0);
-                                            setApprovalDeposit(r.deposit || utilityRates.roomDeposit || 0);
-                                        }
-                                    }}
-                                    className="w-full bg-brand-bg border border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-white outline-none focus:border-brand-orange-500/50 transition-all appearance-none text-center"
-                                >
-                                    <option value="">-- เลือกห้องพัก --</option>
-                                    {rooms.filter(r => r.status === 'ว่าง' || r.roomNumber === requestToApprove.roomNumber).map(r => (
-                                        <option key={r.roomNumber} value={r.roomNumber}>ห้อง {r.roomNumber}</option>
-                                    ))}
-                                </select>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {/* Floor dropdown */}
+                                    <div>
+                                        <label className="text-[10px] font-bold text-brand-gray-500 mb-1.5 block ml-1 uppercase tracking-widest">ชั้น</label>
+                                        <select
+                                            value={approvalFloor}
+                                            onChange={(e) => {
+                                                setApprovalFloor(e.target.value);
+                                                setApprovalRoom(null);
+                                            }}
+                                            className="w-full bg-brand-bg border border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-white outline-none focus:border-brand-orange-500/50 transition-all appearance-none text-center"
+                                        >
+                                            <option value="">-- เลือกชั้น --</option>
+                                            {floors.map(f => (
+                                                <option key={f.id} value={f.id}>ชั้น {f.id}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {/* Room dropdown — filtered by selected floor */}
+                                    <div>
+                                        <label className="text-[10px] font-bold text-brand-gray-500 mb-1.5 block ml-1 uppercase tracking-widest">ห้อง</label>
+                                        <select
+                                            value={approvalRoom?.roomNumber || ''}
+                                            onChange={(e) => {
+                                                const r = rooms.find(rm => rm.roomNumber === e.target.value);
+                                                setApprovalRoom(r || null);
+                                                if (r) {
+                                                    setApprovalExpenses(r.fixedExpenses
+                                                        ? r.fixedExpenses.map(fe => ({ ...fe, active: false }))
+                                                        : fixedExpenses.map(fe => ({ ...fe, active: false }))
+                                                    );
+                                                    setApprovalAmenities(r.amenities || amenities.map(am => ({ ...am, status: true })));
+                                                    setApprovalWaterMeter(r.waterMeter || 0);
+                                                    setApprovalElecMeter(r.electricityMeter || 0);
+                                                    setApprovalDeposit(r.deposit || utilityRates.roomDeposit || 0);
+                                                }
+                                            }}
+                                            disabled={!approvalFloor}
+                                            className="w-full bg-brand-bg border border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-white outline-none focus:border-brand-orange-500/50 transition-all appearance-none text-center disabled:opacity-40 disabled:cursor-not-allowed"
+                                        >
+                                            <option value="">-- เลือกห้อง --</option>
+                                            {approvalFloor && rooms
+                                                .filter(r => (r.status === 'ว่าง' || r.roomNumber === requestToApprove?.roomNumber) && r.floor?.toString() === approvalFloor)
+                                                .map(r => (
+                                                    <option key={r.roomNumber} value={r.roomNumber}>ห้อง {r.roomNumber}</option>
+                                                ))}
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
 
                             {approvalRoom && (

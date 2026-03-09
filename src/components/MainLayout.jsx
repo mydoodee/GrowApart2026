@@ -50,7 +50,7 @@ export default function MainLayout({
                         </button>
                         <div className="flex items-center">
                             <Building className="w-6 h-6 text-brand-orange-500 mr-2" />
-                            <span className="text-xl font-bold text-white tracking-tight">GrowApart</span>
+                            <span className="text-xl font-bold text-white tracking-tight">Rentara</span>
                         </div>
                     </div>
 

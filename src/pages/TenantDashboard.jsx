@@ -259,29 +259,69 @@ export default function TenantDashboard({ user }) {
         setIsUploadingSlip(true);
 
         try {
-            const currentPayment = payments.find(p => p.id === paymentId) || selectedPayment;
-            if (!currentPayment) throw new Error('Payment not found');
+            // Find current payment in local state
+            let currentPayment = payments.find(p => p.id === paymentId) || selectedPayment;
+            
+            // If it's a first bill and doesn't exist yet, we'll try to determine the info from room
+            const isFirstBill = paymentId.startsWith('first_bill_');
+            
+            if (!currentPayment && !isFirstBill) {
+                throw new Error('Payment not found');
+            }
 
-            const month = currentPayment.month || 'first_bill';
-            const aptId = currentPayment.apartmentId;
+            const month = currentPayment?.month || 'first_bill';
+            const aptId = currentPayment?.apartmentId || myRooms[0]?.apartmentId;
+            
+            if (!aptId) throw new Error('Apartment ID not found');
+
             const storagePath = `slips/${aptId}/${month}/${paymentId}_${Date.now()}`;
             const slipRef = ref(storage2, storagePath);
 
             const snapshot = await uploadBytes(slipRef, file);
             const downloadURL = await getDownloadURL(snapshot.ref);
 
-            // Update Firestore
+            // Update or Create Firestore record
             const payRef = doc(db, 'payments', paymentId);
-            await setDoc(payRef, {
+            const payData = {
                 status: 'waiting_verification',
                 slipUrl: downloadURL,
                 uploadedAt: serverTimestamp(),
                 updatedAt: serverTimestamp()
-            }, { merge: true });
+            };
+
+            // If it's a first bill brand new, we need to ensure the doc has basic info
+            if (isFirstBill && !currentPayment) {
+                const room = myRooms[0];
+                const items = getFirstBillItems(room, apartmentDetails[room.apartmentId]);
+                const total = items.reduce((s, i) => s + i.amount, 0);
+
+                await setDoc(payRef, {
+                    ...payData,
+                    type: 'first_bill',
+                    amount: total,
+                    apartmentId: room.apartmentId,
+                    roomNumber: room.roomNumber,
+                    tenantId: user.uid,
+                    tenantName: user.displayName || user.email?.split('@')[0],
+                    month: 'first_bill',
+                    details: { items }
+                }, { merge: true });
+            } else {
+                await setDoc(payRef, payData, { merge: true });
+            }
+
+            // If it's first_bill, also update the room record
+            if (isFirstBill) {
+                const roomRef = doc(db, 'rooms', myRooms[0].id);
+                await setDoc(roomRef, { 
+                    firstBillPaid: false, // It's not paid yet, just waiting_verification
+                    firstBillStatus: 'waiting_verification' 
+                }, { merge: true });
+            }
 
             showToast('อัพโหลดสลิปเรียบร้อยแล้ว รอเจ้าหน้าที่ตรวจสอบ', 'success');
 
-            // Find and update local state
+            // Find and update local state if payment exists
             setPayments(prev => prev.map(p => p.id === paymentId ? { ...p, status: 'waiting_verification', slipUrl: downloadURL } : p));
             if (selectedPayment?.id === paymentId) {
                 setSelectedPayment(prev => ({ ...prev, status: 'waiting_verification', slipUrl: downloadURL }));
@@ -289,7 +329,7 @@ export default function TenantDashboard({ user }) {
 
         } catch (error) {
             console.error("Slip upload error:", error);
-            showToast('อัพโหลดสลิปล้มเหลว', 'error');
+            showToast(`อัพโหลดสลิปล้มเหลว: ${error.message}`, 'error');
         }
         setIsUploadingSlip(false);
     };
@@ -404,7 +444,7 @@ export default function TenantDashboard({ user }) {
             <!DOCTYPE html>
             <html>
             <head>
-                <title>GrowApart Invoice - ห้อง ${payment.roomNumber}</title>
+                <title>Rentara Invoice - ห้อง ${payment.roomNumber}</title>
                 <style>
                     @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&family=Inter:wght@400;600;800&display=swap');
                     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -528,7 +568,7 @@ export default function TenantDashboard({ user }) {
                     </div>
                     <div>
                         <h2 className="text-base font-bold text-white tracking-tight leading-none">
-                            {primaryApt?.general?.name || 'GrowApart'}
+                            {primaryApt?.general?.name || 'Rentara'}
                         </h2>
                         <p className="text-[10px] font-medium text-brand-gray-500 tracking-wider uppercase mt-0.5">
                             {primaryApt?.general?.name ? 'ผู้เช่า' : 'Management'}
@@ -962,7 +1002,7 @@ export default function TenantDashboard({ user }) {
                                             </div>
                                             <div>
                                                 <h3 className="text-sm font-bold text-white leading-tight">ใบแจ้งค่าแรกเข้า</h3>
-                                                <p className="text-[10px] font-medium text-brand-orange-400/60 uppercase tracking-wider">First Move-in Bill</p>
+                                                <p className="text-[10px] font-medium text-brand-orange-400/60 uppercase tracking-wider">ค่าแรกเข้า (ย้ายเข้า)</p>
                                             </div>
                                             <span className="ml-auto px-2.5 py-1 bg-yellow-500/10 border border-yellow-500/20 rounded-full text-[10px] font-semibold text-yellow-400 flex items-center gap-1">
                                                 <Clock className="w-3 h-3" /> รอชำระ
@@ -1013,7 +1053,7 @@ export default function TenantDashboard({ user }) {
                                         <input
                                             type="file"
                                             ref={slipInputRef}
-                                            onChange={(e) => handleUploadSlip(e, `first_bill_${room.id} `)}
+                                            onChange={(e) => handleUploadSlip(e, `first_bill_${room.id}`)}
                                             className="hidden"
                                             accept="image/*"
                                         />
@@ -1074,23 +1114,31 @@ export default function TenantDashboard({ user }) {
                                         const isFuture = new Date(calendarYear, i) > new Date(now.getFullYear(), now.getMonth());
                                         const hasPayment = !!payment;
 
-                                        let statusText = null;
-                                        let bgClass = 'bg-white/2';
+                                        let statusIcon = null;
+                                        let statusColor = 'text-brand-gray-500';
+                                        let bgClass = 'bg-white/[0.02] hover:bg-white/[0.05]';
                                         let borderClass = 'border-white/5';
+                                        let glowClass = '';
 
                                         if (hasPayment) {
                                             if (payment.status === 'paid') {
-                                                statusText = <span className="text-[8px] font-black text-emerald-400 uppercase">จ่ายแล้ว</span>;
-                                                bgClass = 'bg-emerald-500/5 hover:bg-emerald-500/10';
+                                                statusIcon = <CheckCircle2 className="w-3.5 h-3.5" />;
+                                                statusColor = 'text-emerald-400';
+                                                bgClass = 'bg-emerald-500/[0.03] hover:bg-emerald-500/[0.08]';
                                                 borderClass = 'border-emerald-500/20';
+                                                glowClass = 'hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.2)]';
                                             } else if (payment.status === 'waiting_verification') {
-                                                statusText = <span className="text-[8px] font-black text-blue-400 uppercase">รอเช็ค</span>;
-                                                bgClass = 'bg-blue-500/5 hover:bg-blue-500/10';
+                                                statusIcon = <Clock className="w-3.5 h-3.5" />;
+                                                statusColor = 'text-blue-400';
+                                                bgClass = 'bg-blue-500/[0.03] hover:bg-blue-500/[0.08]';
                                                 borderClass = 'border-blue-500/20';
+                                                glowClass = 'hover:shadow-[0_0_20px_-5px_rgba(59,130,246,0.2)]';
                                             } else {
-                                                statusText = <span className="text-[8px] font-black text-yellow-400 uppercase">ค้างชำระ</span>;
-                                                bgClass = 'bg-yellow-500/5 hover:bg-yellow-500/10';
+                                                statusIcon = <AlertCircle className="w-3.5 h-3.5" />;
+                                                statusColor = 'text-yellow-400';
+                                                bgClass = 'bg-yellow-500/[0.03] hover:bg-yellow-500/[0.08]';
                                                 borderClass = 'border-yellow-500/20';
+                                                glowClass = 'hover:shadow-[0_0_20px_-5px_rgba(245,158,11,0.2)]';
                                             }
                                         }
 
@@ -1099,35 +1147,49 @@ export default function TenantDashboard({ user }) {
                                                 key={monthKey}
                                                 onClick={() => !isFuture && hasPayment && toggleMonth(monthKey)}
                                                 disabled={isFuture || !hasPayment}
-                                                className={`relative p-3.5 rounded-2xl border transition-all duration-200 text-left ${bgClass} ${borderClass} ${isCurrent ? 'ring-1 ring-brand-orange-500/40' : ''} ${isFuture ? 'opacity-30 cursor-default' : hasPayment ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'} ${isSelected ? 'ring-2 ring-brand-orange-500 shadow-lg shadow-brand-orange-500/10' : ''}`}
+                                                className={`group relative p-4 rounded-2xl border backdrop-blur-sm transition-all duration-300 text-left 
+                                                    ${bgClass} ${borderClass} ${glowClass}
+                                                    ${isCurrent ? 'ring-1 ring-brand-orange-500/30' : ''} 
+                                                    ${isFuture ? 'opacity-20 grayscale cursor-default' : hasPayment ? 'cursor-pointer active:scale-95' : 'cursor-default'} 
+                                                    ${isSelected ? 'ring-2 ring-brand-orange-500 shadow-xl shadow-brand-orange-500/20 z-10' : ''}`}
                                             >
                                                 {/* Selection indicator */}
                                                 {isSelected && (
-                                                    <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-brand-orange-500 flex items-center justify-center">
-                                                        <CheckCircle2 className="w-3 h-3 text-brand-bg" />
+                                                    <div className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-brand-orange-500 flex items-center justify-center shadow-lg border-2 border-brand-bg animate-in zoom-in duration-200">
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-bg font-bold" />
                                                     </div>
                                                 )}
 
-                                                {/* Current month indicator */}
-                                                {isCurrent && !isSelected && (
-                                                    <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-brand-orange-500 animate-pulse" />
+                                                {/* Status Icon/Dot */}
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className={`text-[9px] font-black uppercase tracking-widest ${isCurrent ? 'text-brand-orange-500' : 'text-brand-gray-500'}`}>
+                                                        {thMonths[i]}
+                                                    </span>
+                                                    <div className={`${statusColor} transition-transform group-hover:scale-110 duration-300`}>
+                                                        {statusIcon || <div className="w-1.5 h-1.5 rounded-full bg-white/10" />}
+                                                    </div>
+                                                </div>
+
+                                                <h4 className={`text-sm font-bold truncate ${isCurrent ? 'text-white' : 'text-brand-gray-300'}`}>
+                                                    {thMonthsFull[i]}
+                                                </h4>
+
+                                                {hasPayment ? (
+                                                    <div className="mt-2 flex items-baseline gap-0.5">
+                                                        <span className={`text-xs font-black ${payment.status === 'paid' ? 'text-emerald-400' : 'text-white'}`}>
+                                                            {payment.amount.toLocaleString()}
+                                                        </span>
+                                                        <span className="text-[8px] font-bold text-brand-gray-500">฿</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="mt-2 h-4 flex items-center">
+                                                        <div className="w-full h-[1px] bg-white/5" />
+                                                    </div>
                                                 )}
 
-                                                <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isCurrent ? 'text-brand-orange-400' : 'text-brand-gray-500'}`}>
-                                                    {thMonths[i]}
-                                                </p>
-                                                <p className={`text-xs font-medium mb-2 ${isCurrent ? 'text-white' : 'text-brand-gray-400'}`}>
-                                                    {thMonthsFull[i]}
-                                                </p>
-
-                                                <div className="mt-1">
-                                                    {statusText}
-                                                    {hasPayment && (
-                                                        <p className={`text-[10px] font-bold mt-0.5 ${payment.status === 'paid' ? 'text-emerald-400' : 'text-yellow-400'}`}>
-                                                            {payment.amount.toLocaleString()} ฿
-                                                        </p>
-                                                    )}
-                                                </div>
+                                                {isCurrent && !isSelected && (
+                                                    <div className="absolute bottom-2 right-2 w-1 h-1 rounded-full bg-brand-orange-500 animate-ping" />
+                                                )}
                                             </button>
                                         );
                                     })}
@@ -1151,10 +1213,10 @@ export default function TenantDashboard({ user }) {
                                                     </div>
                                                     <div className="text-left">
                                                         <p className="text-sm font-bold text-white">
-                                                            {thMonthsFull[parseInt(p.month.split('-')[1]) - 1]}
+                                                            {p.month === 'first_bill' ? 'ค่าแรกเข้า' : thMonthsFull[parseInt(p.month.split('-')[1]) - 1]}
                                                         </p>
                                                         <p className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-wider">
-                                                            Billing for {p.month}
+                                                            {p.month === 'first_bill' ? 'บิลแรกเข้า' : `รอบบิลเดือน ${p.month}`}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -1182,7 +1244,7 @@ export default function TenantDashboard({ user }) {
                                             </div>
                                             <div>
                                                 <p className="text-sm font-bold text-white">ค่าแรกเข้าชำระแล้ว</p>
-                                                <p className="text-[10px] font-medium text-emerald-400/60 uppercase tracking-wider">First bill paid</p>
+                                                <p className="text-[10px] font-medium text-emerald-400/60 uppercase tracking-wider">ชำระค่าแรกเข้าเรียบร้อย</p>
                                             </div>
                                         </div>
                                         <button
@@ -1197,18 +1259,22 @@ export default function TenantDashboard({ user }) {
 
                             {/* Legend */}
                             {billDisplayMode === 'calendar' && (
-                                <div className="flex items-center justify-center gap-4 pt-6 border-t border-white/5 mt-6">
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                                        <span className="text-[9px] font-medium text-brand-gray-500">จ่ายแล้ว</span>
+                                <div className="flex items-center justify-center gap-6 pt-8 border-t border-white/5 mt-8">
+                                    <div className="flex items-center gap-2 group cursor-default">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_-2px_rgba(16,185,129,0.5)] transition-transform group-hover:scale-110" />
+                                        <span className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-wider">จ่ายแล้ว</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full bg-yellow-400" />
-                                        <span className="text-[9px] font-medium text-brand-gray-500">รอชำระ</span>
+                                    <div className="flex items-center gap-2 group cursor-default">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_10px_-2px_rgba(59,130,246,0.5)] transition-transform group-hover:scale-110" />
+                                        <span className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-wider">รอเช็ค</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full border border-white/20" />
-                                        <span className="text-[9px] font-medium text-brand-gray-500">ไม่มีบิล</span>
+                                    <div className="flex items-center gap-2 group cursor-default">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500 shadow-[0_0_10px_-2px_rgba(245,158,11,0.5)] transition-transform group-hover:scale-110" />
+                                        <span className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-wider">ค้างชำระ</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 group cursor-default">
+                                        <div className="w-2.5 h-2.5 rounded-full border border-white/20 bg-white/5 transition-transform group-hover:scale-110" />
+                                        <span className="text-[10px] font-bold text-brand-gray-400 uppercase tracking-wider">ไม่มีบิล</span>
                                     </div>
                                 </div>
                             )}
@@ -1387,7 +1453,7 @@ export default function TenantDashboard({ user }) {
                                 <button onClick={handleLogout} className="w-full flex items-center justify-center gap-3 p-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl border border-red-500/10 transition-all font-medium text-sm">
                                     <LogOut size={18} /> ออกจากระบบ
                                 </button>
-                                <p className="text-center text-[9px] font-normal text-brand-gray-700 uppercase tracking-widest mt-6">GrowApart v1.0.2</p>
+                                <p className="text-center text-[9px] font-normal text-brand-gray-700 uppercase tracking-widest mt-6">Rentara v1.0.2</p>
                             </div>
                         </div>
                     )
@@ -1464,7 +1530,7 @@ export default function TenantDashboard({ user }) {
                                         )}
 
                                         <div className="text-center mt-8 pt-4 border-t border-slate-100">
-                                            <p className="text-[9px] text-slate-300 font-medium italic">ใบแจ้งหนี้นี้ออกโดยระบบ GrowApart</p>
+                                            <p className="text-[9px] text-slate-300 font-medium italic">ใบแจ้งหนี้นี้ออกโดยระบบ Rentara</p>
                                         </div>
                                     </div>
 
@@ -1490,8 +1556,8 @@ export default function TenantDashboard({ user }) {
             }
 
             {/* Bottom Navigation Navbar */}
-            <nav className="fixed bottom-0 left-0 right-0 z-[100] px-6 pb-8 pt-4 lg:hidden">
-                <div className="bg-brand-bg/80 backdrop-blur-2xl border border-white/10 rounded-2xl px-5 py-3 shadow-2xl shadow-black/40 flex items-center justify-between">
+            <nav className="fixed bottom-0 left-0 right-0 z-[100] px-6 pb-8 pt-4 flex justify-center">
+                <div className="bg-brand-bg/80 backdrop-blur-2xl border border-white/10 rounded-2xl px-5 py-3 shadow-2xl shadow-black/40 flex items-center justify-between w-full max-w-lg">
                     {NavItems.map(item => (
                         <button
                             key={item.id}
@@ -1795,7 +1861,7 @@ export default function TenantDashboard({ user }) {
                                                 <div className="text-center pt-8 border-t-2 border-dashed border-slate-100">
                                                     <p className="text-sm font-black text-slate-500 mb-1 italic">ขอบคุณที่ใช้บริการ</p>
                                                     <p className="text-[9px] font-bold text-slate-300 uppercase tracking-[0.2em]">
-                                                        Issued by GrowApart • {new Date().toLocaleDateString('th-TH', {
+                                                        Issued by Rentara • {new Date().toLocaleDateString('th-TH', {
                                                             day: '2-digit', month: 'long', year: 'numeric',
                                                             hour: '2-digit', minute: '2-digit'
                                                         })}

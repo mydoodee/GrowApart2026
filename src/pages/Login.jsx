@@ -55,6 +55,7 @@ export default function Login({ user }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
 
   useEffect(() => {
     async function checkUserProfile() {
@@ -78,7 +79,7 @@ export default function Login({ user }) {
       // Check if input is a phone number (e.g. 10 digits)
       const isPhone = /^\d{9,10}$/.test(email.replace(/\D/g, ""));
       const loginEmail = isPhone
-        ? `${email.replace(/\D/g, "")}@growapart.system`
+        ? `${email.replace(/\D/g, "")}@rentara.system`
         : email;
 
       const userCredential = await signInWithEmailAndPassword(auth, loginEmail, password);
@@ -117,10 +118,12 @@ export default function Login({ user }) {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!name || !email || !password)
+    if (!name || !email || !password || !phone)
       return setError("กรุณากรอกข้อมูลให้ครบถ้วน");
     if (password.length < 6)
       return setError("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
+    if (phone.replace(/\D/g, "").length < 9)
+      return setError("เบอร์โทรศัพท์ไม่ถูกต้อง");
     setError("");
     setLoading(true);
     try {
@@ -133,6 +136,7 @@ export default function Login({ user }) {
       await setDoc(doc(db, "users", userCredential.user.uid), {
         name,
         email,
+        phone,
         role: "owner",
         createdAt: serverTimestamp(),
       });
@@ -246,7 +250,7 @@ export default function Login({ user }) {
           <div className="relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-brand-orange-500 to-brand-orange-400 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
             <div className="relative flex items-center justify-center bg-brand-card px-4 py-2 rounded-xl border border-white/10 overflow-hidden">
-              <img src="/logo.png" alt="GrowApart Logo" className="h-12 w-auto object-contain" />
+              <img src="/logo.png" alt="Rentara Logo" className="h-12 w-auto object-contain" />
             </div>
           </div>
         </div>
@@ -446,6 +450,21 @@ export default function Login({ user }) {
                   placeholder="สมชาย ใจดี"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  className="bg-transparent border-none text-brand-input-text font-semibold w-full outline-none placeholder-brand-bg/30 text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-brand-orange-500 text-[11px] font-bold mb-1.5 ml-1 uppercase tracking-wider">
+                เบอร์โทรศัพท์
+              </label>
+              <div className="flex items-center bg-brand-input-bg rounded-xl px-4 py-2 border border-transparent focus-within:border-brand-orange-500/50 transition-all shadow-inner">
+                <UserIcon className="w-4.5 h-4.5 text-brand-bg/40 mr-3 shrink-0" />
+                <input
+                  type="tel"
+                  placeholder="08X-XXX-XXXX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   className="bg-transparent border-none text-brand-input-text font-semibold w-full outline-none placeholder-brand-bg/30 text-sm"
                 />
               </div>

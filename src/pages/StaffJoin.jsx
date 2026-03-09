@@ -65,7 +65,7 @@ export default function StaffJoin({ user }) {
         try {
             if (!currentUser) {
                 // Authenticate or Register using Phone as Email
-                const fakeEmail = `${phone.replace(/\D/g, '')}@growapart.system`;
+                const fakeEmail = `${phone.replace(/\D/g, '')}@rentara.system`;
                 try {
                     // Try to login first
                     const userCredential = await signInWithEmailAndPassword(auth, fakeEmail, password);

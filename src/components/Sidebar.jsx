@@ -12,6 +12,7 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
     const navigate = useNavigate();
     const location = useLocation();
     const [requestCount, setRequestCount] = useState(0);
+    const [pendingSlipCount, setPendingSlipCount] = useState(0);
     const path = location.pathname;
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
@@ -32,8 +33,19 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
             setRequestCount(snapshot.size);
         });
 
-        return () => unsubscribe();
-    }, [activeAptId]); // requestCount is used in functional update, so we don't need it in deps for the reset logic.
+        // Listen for pending slip verifications to show badge on billing
+        const slipQ = query(
+            collection(db, 'payments'),
+            where('apartmentId', '==', activeAptId),
+            where('status', '==', 'waiting_verification')
+        );
+
+        const unsubscribeSlips = onSnapshot(slipQ, (snapshot) => {
+            setPendingSlipCount(snapshot.size);
+        });
+
+        return () => { unsubscribe(); unsubscribeSlips(); };
+    }, [activeAptId]);
 
     const handleLogout = async () => {
         await signOut(auth);
@@ -75,7 +87,9 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
             label: 'ออกบิลรายเดือน',
             icon: <CreditCard className="w-5 h-5 mr-3" />,
             path: '/billing',
-            active: path === '/billing'
+            active: path === '/billing',
+            badge: pendingSlipCount,
+            badgeColor: 'bg-emerald-500'
         }
     ];
 
@@ -132,7 +146,7 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
             `}>
                 <div className="h-12 flex items-center justify-between px-4 border-b border-white/10 md:border-none">
                     <div className="flex items-center h-full">
-                        <img src="/logo.png" alt="GrowApart Logo" className="h-7 w-auto object-contain" />
+                        <img src="/logo.png" alt="Rentara Logo" className="h-6 w-auto object-contain" />
                     </div>
                     <button onClick={() => setIsMenuOpen(false)} className="md:hidden text-white p-2">
                         <X className="w-5 h-5" />
@@ -159,6 +173,11 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
                                 {item.icon && React.isValidElement(item.icon) ? React.cloneElement(item.icon, { className: 'w-4 h-4' }) : null}
                             </span>
                             {item.label}
+                            {item.badge > 0 && (
+                                <span className={`ml-auto ${item.badgeColor || 'bg-red-500'} text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full animate-pulse`}>
+                                    {item.badge}
+                                </span>
+                            )}
                         </button>
                     ))}
 

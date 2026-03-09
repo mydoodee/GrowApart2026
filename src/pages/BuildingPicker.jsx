@@ -6,7 +6,8 @@ import { getUserApartments } from '../utils/apartmentUtils';
 import { Building, Plus, LogOut, Check, ArrowRight } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 
-export default function BuildingPicker({ user }) {
+export default function BuildingPicker(props) {
+    const { user } = props;
     const navigate = useNavigate();
     const [buildings, setBuildings] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -43,7 +44,7 @@ export default function BuildingPicker({ user }) {
         }
     };
 
-    const handleEnter = () => {
+    const handleEnter = async () => {
         if (selected.length === 0) return;
 
         if (selected.length === 1) {
@@ -54,6 +55,12 @@ export default function BuildingPicker({ user }) {
             localStorage.setItem('activeApartmentId', 'all');
             localStorage.setItem('selectedBuildingIds', JSON.stringify(selected));
         }
+
+        // Trigger role refresh in App.jsx to pick up apartment-specific roles
+        if (props.refreshUserRole) {
+            await props.refreshUserRole();
+        }
+
         navigate('/dashboard');
     };
 
@@ -75,9 +82,9 @@ export default function BuildingPicker({ user }) {
             <div className="max-w-4xl w-full text-center space-y-10">
                 <div className="space-y-4">
                     <div className="inline-flex items-center justify-center mb-4">
-                        <img src="/logo.png" alt="GrowApart Logo" className="h-16 w-auto object-contain" />
+                        <img src="/logo.png" alt="Rentara Logo" className="h-16 w-auto object-contain" />
                     </div>
-                    <h1 className="text-2xl font-bold tracking-tight mb-2">ยินดีต้อนรับสู่ <span className="text-brand-orange-500">GrowApart</span></h1>
+                    <h1 className="text-2xl font-bold tracking-tight mb-2">ยินดีต้อนรับสู่ <span className="text-brand-orange-500">Rentara</span></h1>
                     <p className="text-brand-gray-400 font-bold">เลือกตึกที่ต้องการจัดการ (เลือกได้มากกว่า 1 ตึก)</p>
                 </div>
 

@@ -90,7 +90,7 @@ export default function TenantLogin({ user }) {
       if (authMethod === "phone") {
         const cleanPhone = (phone || "").replace(/\D/g, "");
         if (!cleanPhone) throw new Error("กรุณากรอกเบอร์โทรศัพท์");
-        authEmail = `${cleanPhone}@growapart.system`;
+        authEmail = `${cleanPhone}@rentara.system`;
       }
 
       const userCredential = await signInWithEmailAndPassword(auth, authEmail, password);
@@ -355,7 +355,7 @@ export default function TenantLogin({ user }) {
 
       <div className="fixed bottom-10 left-1/2 -translate-x-1/2 text-center space-y-2 opacity-50 hover:opacity-100 transition-opacity">
         <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-[0.2em]">
-          GROWAPART SYSTEM
+          RENTARA SYSTEM
         </p>
         <div className="flex items-center gap-4">
           <button
