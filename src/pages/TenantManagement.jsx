@@ -25,7 +25,7 @@ const AVATAR_BG = [
 const getAvatarBg = (name = '') => AVATAR_BG[(name.charCodeAt(0) || 0) % AVATAR_BG.length];
 
 const thMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-// eslint-disable-next-line no-unused-vars
+ 
 const thMonthsFull = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
 const normalizeStatus = (status) => {
@@ -76,12 +76,11 @@ export default function TenantManagement({ user }) {
     const [selectedTenant, setSelectedTenant] = useState(null);
     const [viewTab, setViewTab] = useState(localStorage.getItem('tenantViewTab') || 'datagrid');
     const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
-    const [historyView, setHistoryView] = useState('table');
+    const [historyView, setHistoryView] = useState('table'); // eslint-disable-next-line no-unused-vars
     const [payments, setPayments] = useState([]);
     const [allAptPayments, setAllAptPayments] = useState([]);
     const [paymentsLoading, setPaymentsLoading] = useState(false);
-    // eslint-disable-next-line no-unused-vars
-    const [allPaymentsLoading, setAllPaymentsLoading] = useState(false);
+    const [allPaymentsLoading, setAllPaymentsLoading] = useState(false); // eslint-disable-next-line no-unused-vars
     
     // Filtering states
     const [filterYear, setFilterYear] = useState('all');
@@ -166,7 +165,7 @@ export default function TenantManagement({ user }) {
         if (tenant) {
             const rn = tenant.apartmentRoles?.[activeAptId]?.roomNumber;
             const roomObj = rooms.find(r => r.roomNumber === rn);
-            // eslint-disable-next-line react-hooks/set-state-in-effect
+             
             setSelectedTenant(prev => {
                 if (prev?.id === tenant.id) return prev;
                 return { ...tenant, roomNumber: rn, roomObj };
@@ -186,9 +185,9 @@ export default function TenantManagement({ user }) {
     // ── payments for selected tenant ─────────────────────────────────────────
     useEffect(() => {
         if (!selectedTenant?.id || !activeAptId) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setPayments([]);
-            setPaymentsLoading(false);
+             
+            // setPayments([]);
+            // setPaymentsLoading(false);
             return;
         }
 
@@ -216,8 +215,8 @@ export default function TenantManagement({ user }) {
     // ── all apartment payments ───────────────────────────────────────────────
     useEffect(() => {
         if (!activeAptId || activeAptId === 'all') {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setAllAptPayments([]);
+             
+            // setAllAptPayments([]);
             return;
         }
 
@@ -608,91 +607,63 @@ export default function TenantManagement({ user }) {
                                     </div>
                                 ) : null}
                                 
-                                <div className="px-4 py-3 border-b border-white/5 bg-zinc-900/50 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                                <div className="px-4 py-3 border-b border-white/5 bg-zinc-900/50 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
                                     <div className="flex items-center gap-3">
-                                        <div className="flex bg-zinc-950 border border-white/10 p-1 rounded-lg">
-                                            <button 
-                                                onClick={() => setHistoryView('table')}
-                                                className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${historyView === 'table' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-                                            >
-                                                รายการบูโร
-                                            </button>
-                                            <button 
-                                                onClick={() => setHistoryView('calendar')}
-                                                className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${historyView === 'calendar' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-                                            >
-                                                ผังรายปี
-                                            </button>
-                                        </div>
-
-                                        <div className="h-4 w-[1px] bg-white/10 mx-1" />
-
-                                        {historyView === 'calendar' ? (
-                                            <div className="flex items-center gap-2">
-                                                <button onClick={() => setCalendarYear(prev => prev - 1)} className="p-1 hover:bg-white/5 rounded text-zinc-500 hover:text-white transition-colors">
-                                                    <ChevronRight className="w-3 h-3 rotate-180" />
-                                                </button>
-                                                <span className="text-[11px] font-black text-brand-orange-400 tracking-tighter">พ.ศ. {calendarYear + 543}</span>
-                                                <button onClick={() => setCalendarYear(prev => prev + 1)} className="p-1 hover:bg-white/5 rounded text-zinc-500 hover:text-white transition-colors">
-                                                    <ChevronRight className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center gap-3">
-                                                <select 
-                                                    value={filterYear} onChange={e => setFilterYear(e.target.value)}
-                                                    className="bg-zinc-800 border border-white/10 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-brand-orange-500/50"
-                                                >
-                                                    <option value="all">ทุกปี</option>
-                                                    {[...new Set(allAptPayments.map(p => p.month?.split('-')[0]))].filter(Boolean).sort((a,b)=>b-a).map(y => (
-                                                        <option key={y} value={y}>{y}</option>
-                                                    ))}
-                                                </select>
-                                                <select 
-                                                    value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
-                                                    className="bg-zinc-800 border border-white/10 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-brand-orange-500/50"
-                                                >
-                                                    <option value="all">ทุกเดือน</option>
-                                                    {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
-                                                        <option key={m} value={m}>{thMonths[i]}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {historyView === 'calendar' && (
                                         <div className="flex items-center gap-3">
-                                            {[
-                                                { label: 'จ่ายแล้ว', color: 'bg-emerald-500' },
-                                                { label: 'รอเช็ค', color: 'bg-blue-500' },
-                                                { label: 'ค้าง', color: 'bg-yellow-500' }
-                                            ].map(l => (
-                                                <div key={l.label} className="flex items-center gap-1.5">
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${l.color} shadow-[0_0_5px_currentColor]`} />
-                                                    <span className="text-[9px] font-semibold text-zinc-600 uppercase">{l.label}</span>
-                                                </div>
-                                            ))}
+                                            <select 
+                                                value={filterYear} onChange={e => setFilterYear(e.target.value)}
+                                                className="bg-zinc-800 border border-white/10 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-brand-orange-500/50"
+                                            >
+                                                <option value="all">ทุกปี</option>
+                                                {[...new Set(allAptPayments.map(p => p.month?.split('-')[0]))].filter(Boolean).sort((a,b)=>b-a).map(y => (
+                                                    <option key={y} value={y}>{y}</option>
+                                                ))}
+                                            </select>
+                                            <select 
+                                                value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
+                                                className="bg-zinc-800 border border-white/10 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-brand-orange-500/50"
+                                            >
+                                                <option value="all">ทุกเดือน</option>
+                                                {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+                                                    <option key={m} value={m}>{thMonths[i]}</option>
+                                                ))}
+                                            </select>
                                         </div>
-                                    )}
+                                    </div>
+                                    <button
+                                        onClick={() => window.print()}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-white/10 text-[10px] font-bold text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all shadow-sm"
+                                    >
+                                        <Printer className="w-3.5 h-3.5" /> พิมพ์รายงาน
+                                    </button>
                                 </div>
 
-                                <div className="flex-1 overflow-auto custom-scrollbar bg-zinc-950/20">
-                                    {historyView === 'table' ? (
-                                        <table className="w-full text-left border-collapse">
-                                            <thead>
-                                                <tr className="border-b border-white/5 bg-white/[0.02] sticky top-0 z-10 backdrop-blur-md">
-                                                    <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">เดือน/ปี</th>
-                                                    <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">ห้อง</th>
-                                                    <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest hidden md:table-cell">ผู้เช่า</th>
-                                                    <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-right">จำนวนเงิน</th>
-                                                    <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-center">หลักฐาน</th>
-                                                    <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-center">สถานะ</th>
+                                {/* Print Header (Only visible when printing) */}
+                                <div className="hidden print:block px-4 py-4 border-b border-black text-black">
+                                    <h2 className="text-xl font-bold mb-1">รายงานประวัติผู้เช่าและการชำระเงิน</h2>
+                                    <p className="text-sm">
+                                        {currentApt?.name ? `อาคาร: ${currentApt.name}` : ''} 
+                                        {filterYear !== 'all' ? ` | ปี: ${filterYear}` : ' | รวมทุกปี'} 
+                                        {filterMonth !== 'all' ? ` | เดือน: ${thMonthsFull[parseInt(filterMonth)-1]}` : ''}
+                                        {sq ? ` | ค้นหา: "${sq}"` : ''}
+                                    </p>
+                                </div>
+
+                                <div className="flex-1 overflow-auto custom-scrollbar bg-zinc-950/20 print:overflow-visible print:bg-transparent">
+                                    <table className="w-full text-left border-collapse print:text-black">
+                                        <thead>
+                                            <tr className="border-b border-white/5 bg-white/[0.02] sticky top-0 z-10 backdrop-blur-md print:bg-transparent print:border-black print:static print:text-black">
+                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest print:text-black print:font-bold">เดือน/ปี</th>
+                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest print:text-black print:font-bold">ห้อง</th>
+                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest hidden md:table-cell print:table-cell print:text-black print:font-bold">ผู้เช่า</th>
+                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-right print:text-black print:font-bold">จำนวนเงิน</th>
+                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-center print:hidden">หลักฐาน</th>
+                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-center print:text-black print:font-bold">สถานะ</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-white/[0.04]">
+                                            <tbody className="divide-y divide-white/[0.04] print:divide-black/20">
                                                 {allAptPayments.length === 0 ? (
-                                                    <tr><td colSpan="6" className="px-4 py-16 text-center text-zinc-600 text-[11px] font-medium italic">ยังไม่มีประวัติการชำระเงิน</td></tr>
+                                                    <tr><td colSpan="6" className="px-4 py-16 text-center text-zinc-600 text-[11px] font-medium italic print:text-black">ยังไม่มีประวัติการชำระเงิน</td></tr>
                                                 ) : allAptPayments.filter(p => {
                                                     const matchesSearch = !sq || p.roomNumber?.toLowerCase().includes(sq) || p.tenantName?.toLowerCase().includes(sq) || p.month?.includes(sq);
                                                     const [y, m] = (p.month || '').split('-');
@@ -700,23 +671,23 @@ export default function TenantManagement({ user }) {
                                                     const matchesMonth = filterMonth === 'all' || m === filterMonth;
                                                     return matchesSearch && matchesYear && matchesMonth;
                                                 }).map(p => (
-                                                    <tr key={p.id} className="hover:bg-white/[0.02] transition-colors group">
+                                                    <tr key={p.id} className="hover:bg-white/[0.02] transition-colors group print:border-b print:border-black/10">
                                                         <td className="px-4 py-3">
                                                             <div className="flex items-center gap-2">
-                                                                <div className="w-7 h-7 rounded bg-zinc-800 flex items-center justify-center shrink-0"><Calendar className="w-3.5 h-3.5 text-zinc-500 group-hover:text-brand-orange-400 transition-colors" /></div>
-                                                                <span className="text-xs font-bold text-zinc-200">{p.month === 'first_bill' ? 'ค่าแรกเข้า' : p.month}</span>
+                                                                <div className="w-7 h-7 rounded bg-zinc-800 flex items-center justify-center shrink-0 print:hidden"><Calendar className="w-3.5 h-3.5 text-zinc-500 group-hover:text-brand-orange-400 transition-colors" /></div>
+                                                                <span className="text-xs font-bold text-zinc-200 print:text-black">{p.month === 'first_bill' ? 'ค่าแรกเข้า' : p.month}</span>
                                                             </div>
                                                         </td>
                                                         <td className="px-4 py-3">
-                                                            <span className="text-[11px] font-bold font-mono text-brand-orange-400">{p.roomNumber}</span>
+                                                            <span className="text-[11px] font-bold font-mono text-brand-orange-400 print:text-black">{p.roomNumber}</span>
                                                         </td>
-                                                        <td className="px-4 py-3 hidden md:table-cell">
-                                                            <span className="text-[11px] text-zinc-400 truncate max-w-[120px] inline-block">{p.tenantName || '—'}</span>
+                                                        <td className="px-4 py-3 hidden md:table-cell print:table-cell">
+                                                            <span className="text-[11px] text-zinc-400 truncate max-w-[120px] inline-block print:text-black">{p.tenantName || '—'}</span>
                                                         </td>
                                                         <td className="px-4 py-3 text-right">
-                                                            <span className="text-xs font-bold text-zinc-100">{p.amount?.toLocaleString()} ฿</span>
+                                                            <span className="text-xs font-bold text-zinc-100 print:text-black">{p.amount?.toLocaleString()} ฿</span>
                                                         </td>
-                                                        <td className="px-4 py-3 text-center">
+                                                        <td className="px-4 py-3 text-center print:hidden">
                                                             {p.slipUrl ? (
                                                                 <button 
                                                                     onClick={() => setPreviewSlipUrl(p.slipUrl)}
@@ -725,68 +696,21 @@ export default function TenantManagement({ user }) {
                                                                     <ImageIcon className="w-3.5 h-3.5" />
                                                                 </button>
                                                             ) : (
-                                                                <span className="text-[10px] text-zinc-700">—</span>
+                                                                <span className="text-[10px] text-zinc-700 print:text-black">—</span>
                                                             )}
                                                         </td>
-                                                        <td className="px-4 py-3 text-center">
-                                                            <StatusPill status={p.status} />
+                                                        <td className="px-4 py-3 text-center print:w-24">
+                                                            <div className="print:hidden">
+                                                                <StatusPill status={p.status} />
+                                                            </div>
+                                                            <div className="hidden print:block text-xs font-bold w-full text-center">
+                                                                {normalizeStatus(p.status)}
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
-                                    ) : (
-                                        /* ── Global Calendar Grid ── */
-                                        <div className="p-4">
-                                            <div className="overflow-x-auto rounded-xl border border-white/5 shadow-2xl">
-                                                <div className="min-w-[1000px] grid grid-cols-[100px_repeat(12,1fr)] gap-px bg-white/[0.05]">
-                                                    {/* Header */}
-                                                    <div className="bg-zinc-900 p-3 text-[10px] font-black text-zinc-500 uppercase text-center border-r border-white/10">ROOM</div>
-                                                    {thMonths.map(m => (
-                                                        <div key={m} className="bg-zinc-900 p-3 text-[10px] font-black text-zinc-400 text-center">{m}</div>
-                                                    ))}
-
-                                                    {/* Rows */}
-                                                    {rooms.filter(r => !sq || r.roomNumber?.toLowerCase().includes(sq)).sort((a,b)=>a.roomNumber.localeCompare(b.roomNumber)).map(room => (
-                                                        <div key={room.roomNumber} className="contents group">
-                                                            <div className="bg-zinc-950 p-3 flex items-center justify-center border-r border-white/10 group-hover:bg-brand-orange-500/5 transition-colors sticky left-0 z-10">
-                                                                <span className="text-xs font-black font-mono text-brand-orange-500">{room.roomNumber}</span>
-                                                            </div>
-                                                            {Array.from({ length: 12 }).map((_, i) => {
-                                                                const monthKey = `${calendarYear}-${String(i + 1).padStart(2, '0')}`;
-                                                                const p = allAptPayments.find(pay => pay.roomNumber === room.roomNumber && pay.month === monthKey);
-                                                                const isFuture = new Date(calendarYear, i) > new Date();
-                                                                
-                                                                let color = 'text-zinc-800';
-                                                                let icon = <div className="w-1 h-1 rounded-full bg-current" />;
-                                                                let bg = 'bg-zinc-950/40';
-
-                                                                if (p) {
-                                                                    if (p.status === 'paid') { color = 'text-emerald-400'; icon = <CheckCircle2 className="w-4 h-4" />; bg = 'bg-emerald-500/[0.03]'; }
-                                                                    else if (p.status === 'waiting_verification') { color = 'text-blue-400'; icon = <Clock className="w-4 h-4" />; bg = 'bg-blue-500/[0.03]'; }
-                                                                    else { color = 'text-yellow-400'; icon = <AlertCircle className="w-4 h-4" />; bg = 'bg-yellow-500/[0.03]'; }
-                                                                }
-
-                                                                return (
-                                                                    <div 
-                                                                        key={i} 
-                                                                        onClick={() => p?.slipUrl && setPreviewSlipUrl(p.slipUrl)}
-                                                                        className={`p-2 min-h-[50px] flex items-center justify-center transition-all ${bg} border-white/5
-                                                                            ${p ? 'cursor-pointer hover:bg-white/[0.05]' : ''} 
-                                                                            ${isFuture ? 'opacity-10' : ''}`}
-                                                                    >
-                                                                        <div className={`${color} opacity-80 group-hover:opacity-100 transform group-hover:scale-110 transition-all`}>
-                                                                            {icon}
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         )}
@@ -860,112 +784,7 @@ export default function TenantManagement({ user }) {
                                             )}
                                         </div>
 
-                                        <div className="px-5 py-4">
-                                            <div className="flex items-center justify-between mb-4">
-                                                <div>
-                                                    <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">ประวัติการชำระเงิน</p>
-                                                    <div className="flex items-center gap-1.5 mt-1">
-                                                        <button onClick={() => setCalendarYear(prev => prev - 1)} className="p-1 hover:bg-white/5 rounded text-zinc-500 hover:text-white transition-colors">
-                                                            <ChevronDown className="w-3 h-3 rotate-90" />
-                                                        </button>
-                                                        <span className="text-[10px] font-black text-brand-orange-400">{calendarYear + 543}</span>
-                                                        <button onClick={() => setCalendarYear(prev => prev + 1)} className="p-1 hover:bg-white/5 rounded text-zinc-500 hover:text-white transition-colors">
-                                                            <ChevronDown className="w-3 h-3 -rotate-90" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <button 
-                                                    onClick={() => {
-                                                        handleTabChange('history');
-                                                        setSearch(selectedTenant.roomNumber);
-                                                    }} 
-                                                    className="text-[10px] font-bold text-brand-orange-400 flex items-center gap-1 group"
-                                                >
-                                                    ดูทั้งหมด <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                                                </button>
-                                            </div>
 
-                                            {paymentsLoading ? (
-                                                <div className="py-10 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-zinc-700" /></div>
-                                            ) : (
-                                                <div className="space-y-4">
-                                                    <div className="grid grid-cols-4 gap-2">
-                                                        {Array.from({ length: 12 }).map((_, i) => {
-                                                            const monthKey = `${calendarYear}-${String(i + 1).padStart(2, '0')}`;
-                                                            const payment = payments.find(p => p.month === monthKey);
-                                                            const isFuture = new Date(calendarYear, i) > new Date();
-                                                            const hasPayment = !!payment;
-
-                                                            let statusIcon = null;
-                                                            let statusColor = 'text-zinc-800';
-                                                            let bgClass = 'bg-white/[0.02] border-white/5';
-                                                            let glowClass = '';
-
-                                                            if (hasPayment) {
-                                                                if (payment.status === 'paid') {
-                                                                    statusIcon = <CheckCircle2 className="w-2.5 h-2.5" />;
-                                                                    statusColor = 'text-emerald-400';
-                                                                    bgClass = 'bg-emerald-500/[0.03] border-emerald-500/20';
-                                                                    glowClass = 'hover:shadow-[0_0_15px_-5px_rgba(16,185,129,0.3)] shadow-[0_0_10px_-4px_rgba(16,185,129,0.1)]';
-                                                                } else if (payment.status === 'waiting_verification') {
-                                                                    statusIcon = <Clock className="w-2.5 h-2.5" />;
-                                                                    statusColor = 'text-blue-400';
-                                                                    bgClass = 'bg-blue-500/[0.03] border-blue-500/20';
-                                                                    glowClass = 'hover:shadow-[0_0_15px_-5px_rgba(59,130,246,0.3)] shadow-[0_0_10px_-4px_rgba(59,130,246,0.1)]';
-                                                                } else {
-                                                                    statusIcon = <AlertCircle className="w-2.5 h-2.5" />;
-                                                                    statusColor = 'text-yellow-400';
-                                                                    bgClass = 'bg-yellow-500/[0.03] border-yellow-500/20';
-                                                                    glowClass = 'hover:shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)] shadow-[0_0_10px_-4px_rgba(245,158,11,0.1)]';
-                                                                }
-                                                            }
-
-                                                            return (
-                                                                <div
-                                                                    key={monthKey}
-                                                                    className={`relative p-2 rounded-xl border flex flex-col items-center justify-between min-h-[56px] transition-all duration-300
-                                                                        ${bgClass} ${glowClass}
-                                                                        ${isFuture ? 'opacity-20 grayscale' : hasPayment ? 'cursor-default' : 'opacity-40'}`}
-                                                                >
-                                                                    <span className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter">
-                                                                        {thMonths[i]}
-                                                                    </span>
-                                                                    <div className={`${statusColor} transition-transform`}>
-                                                                        {statusIcon || <div className="w-1.5 h-1.5 rounded-full bg-white/5" />}
-                                                                    </div>
-                                                                    {hasPayment && (
-                                                                        <span className={`text-[8px] font-bold ${payment.status === 'paid' ? 'text-emerald-500/70' : 'text-zinc-400'}`}>
-                                                                            {Math.round(payment.amount/1000)}k
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-
-                                                    {/* Legend */}
-                                                    <div className="flex items-center justify-between px-1 pt-2 border-t border-white/5">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="flex items-center gap-1">
-                                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]" />
-                                                                <span className="text-[8px] font-semibold text-zinc-600 uppercase">จ่ายแล้ว</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_5px_rgba(59,130,246,0.5)]" />
-                                                                <span className="text-[8px] font-semibold text-zinc-600 uppercase">รอเช็ค</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 shadow-[0_0_5px_rgba(245,158,11,0.5)]" />
-                                                                <span className="text-[8px] font-semibold text-zinc-600 uppercase">ค้าง</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="text-[8px] font-bold text-zinc-700 uppercase italic">
-                                                            Billed in {calendarYear}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
                                     </div>
 
                                     <div className="px-5 py-4 border-t border-white/5 bg-zinc-950 flex gap-2">
