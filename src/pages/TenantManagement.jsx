@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -25,7 +25,7 @@ const AVATAR_BG = [
 const getAvatarBg = (name = '') => AVATAR_BG[(name.charCodeAt(0) || 0) % AVATAR_BG.length];
 
 const thMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
- 
+
 const thMonthsFull = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 
 const normalizeStatus = (status) => {
@@ -36,9 +36,9 @@ const normalizeStatus = (status) => {
 };
 
 const STATUS_COLORS = {
-    'จ่ายแล้ว':    { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', dot: 'bg-emerald-400', label: 'จ่ายแล้ว' },
-    'ค้างชำระ': { bg: 'bg-red-500/10',     border: 'border-red-500/30',     text: 'text-red-400',     dot: 'bg-red-400',     label: 'ค้างชำระ' },
-    'รอชำระ': { bg: 'bg-amber-500/10',   border: 'border-amber-500/30',   text: 'text-amber-400',   dot: 'bg-amber-400',   label: 'รอชำระ' },
+    'จ่ายแล้ว': { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', dot: 'bg-emerald-400', label: 'จ่ายแล้ว' },
+    'ค้างชำระ': { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400', dot: 'bg-red-400', label: 'ค้างชำระ' },
+    'รอชำระ': { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400', dot: 'bg-amber-400', label: 'รอชำระ' },
 };
 
 const getStatusStyle = (status) => {
@@ -81,10 +81,11 @@ export default function TenantManagement({ user }) {
     const [allAptPayments, setAllAptPayments] = useState([]);
     const [paymentsLoading, setPaymentsLoading] = useState(false);
     const [allPaymentsLoading, setAllPaymentsLoading] = useState(false); // eslint-disable-next-line no-unused-vars
-    
+
     // Filtering states
     const [filterYear, setFilterYear] = useState('all');
     const [filterMonth, setFilterMonth] = useState('all');
+    const [filterStatus, setFilterStatus] = useState('all');
 
     // Evidence preview state
     const [previewSlipUrl, setPreviewSlipUrl] = useState(null);
@@ -94,9 +95,11 @@ export default function TenantManagement({ user }) {
     const [printMode, setPrintMode] = useState('month'); // 'month' | 'year' | 'all'
     const [printYear, setPrintYear] = useState(String(new Date().getFullYear()));
     const [printMonth, setPrintMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+    const [printPaymentId, setPrintPaymentId] = useState(null);
 
     // room-transfer state
     const [showTransfer, setShowTransfer] = useState(false);
+    const [transferFloor, setTransferFloor] = useState('all');
     const [transferRoom, setTransferRoom] = useState('');
     const [transferSaving, setTransferSaving] = useState(false);
 
@@ -171,7 +174,7 @@ export default function TenantManagement({ user }) {
         if (tenant) {
             const rn = tenant.apartmentRoles?.[activeAptId]?.roomNumber;
             const roomObj = rooms.find(r => r.roomNumber === rn);
-             
+
             setSelectedTenant(prev => {
                 if (prev?.id === tenant.id) return prev;
                 return { ...tenant, roomNumber: rn, roomObj };
@@ -191,7 +194,7 @@ export default function TenantManagement({ user }) {
     // ── payments for selected tenant ─────────────────────────────────────────
     useEffect(() => {
         if (!selectedTenant?.id || !activeAptId) {
-             
+
             // setPayments([]);
             // setPaymentsLoading(false);
             return;
@@ -221,7 +224,7 @@ export default function TenantManagement({ user }) {
     // ── all apartment payments ───────────────────────────────────────────────
     useEffect(() => {
         if (!activeAptId || activeAptId === 'all') {
-             
+
             // setAllAptPayments([]);
             return;
         }
@@ -391,21 +394,33 @@ export default function TenantManagement({ user }) {
     const floorsList = floors.map(f => f.id).sort((a, b) => a - b);
     const sq = search.trim().toLowerCase();
 
+    const currentMonthKey = new Date().toISOString().slice(0, 7);
+    const statusMap = {};
+    tenants.forEach(t => {
+        const payment = allAptPayments.find(p => p.tenantId === t.id && p.month === currentMonthKey);
+        statusMap[t.id] = normalizeStatus(payment?.status);
+    });
+
     // Filtered rooms currently occupied by tenants
     const displayRooms = rooms.filter(r => {
         const t = tenantMap[r.roomNumber];
         if (!t) return false;
         if (filterFloor !== 'all' && r.floor !== parseInt(filterFloor)) return false;
+        if (filterStatus !== 'all' && statusMap[t.id] !== filterStatus) return false;
+
         if (!sq) return true;
         const name = (t.name || t.displayName || t.roomNumber || '').toLowerCase();
         return name.includes(sq) || (t.phone || '').includes(sq) || (t.email || '').toLowerCase().includes(sq) || r.roomNumber?.toLowerCase().includes(sq);
     });
 
-    const vacantRooms = rooms.filter(r => !tenantMap[r.roomNumber]);
+    const paidCount = tenants.filter(t => statusMap[t.id] === 'จ่ายแล้ว').length;
+    const overdueCount = tenants.filter(t => statusMap[t.id] === 'ค้างชำระ').length;
+    const pendingCount = tenants.filter(t => statusMap[t.id] === 'รอชำระ').length;
     const occupiedCount = tenants.length;
+
     // eslint-disable-next-line no-unused-vars
     const totalRooms = rooms.length;
-    const paymentProgress = 75; // Mock for now
+    const paymentProgress = occupiedCount > 0 ? Math.round((paidCount / occupiedCount) * 100) : 0;
 
     // ── print helpers ─────────────────────────────────────────────────────────
     const availableYears = [...new Set(allAptPayments.map(p => {
@@ -415,12 +430,14 @@ export default function TenantManagement({ user }) {
 
     const getPrintData = () => {
         return allAptPayments.filter(p => {
+            if (printPaymentId) return p.id === printPaymentId;
+
             const matchesSearch = !sq || p.roomNumber?.toLowerCase().includes(sq) || p.tenantName?.toLowerCase().includes(sq) || (p.month && p.month.toLowerCase().includes(sq));
             if (!matchesSearch) return false;
 
             const [y, m] = (p.month || '').split('-');
             if (printMode === 'month') return y === printYear && m === printMonth;
-            if (printMode === 'year')  return y === printYear;
+            if (printMode === 'year') return y === printYear;
             return true; // 'all'
         });
     };
@@ -430,9 +447,34 @@ export default function TenantManagement({ user }) {
         setTimeout(() => window.print(), 300);
     };
 
+    const handleInstantPrint = (p) => {
+        const monthVal = p.month;
+        const roomNum = p.roomNumber;
+
+        // Filter print data to only this room
+        if (roomNum) setSearch(roomNum);
+
+        setPrintPaymentId(p.id); // Set printPaymentId before printing
+
+        if (!monthVal || monthVal === 'first_bill') {
+            setPrintMode('all');
+            setPrintYear('all');
+            setPrintMonth('all');
+        } else {
+            const [y, m] = monthVal.split('-');
+            setPrintMode('month');
+            setPrintYear(y);
+            setPrintMonth(m);
+        }
+        setTimeout(() => {
+            window.print();
+            setTimeout(() => setPrintPaymentId(null), 500); // Clear printPaymentId after printing
+        }, 300);
+    };
+
     const printData = getPrintData();
     const printTotal = printData.reduce((s, p) => s + (p.amount || 0), 0);
-    const printPaid  = printData.filter(p => normalizeStatus(p.status) === 'จ่ายแล้ว').reduce((s, p) => s + (p.amount || 0), 0);
+    const printPaid = printData.filter(p => normalizeStatus(p.status) === 'จ่ายแล้ว').reduce((s, p) => s + (p.amount || 0), 0);
     const printUnpaid = printTotal - printPaid;
 
     const printTitle = `${printMode === 'month'
@@ -456,104 +498,110 @@ export default function TenantManagement({ user }) {
             <div className="px-3 sm:px-5 py-3 max-w-[1600px] mx-auto w-full">
 
                 {/* ── Stats Bar ─────────────────────────────── */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                     {[
-                        { label: 'ผู้เช่าทั้งหมด', val: occupiedCount, icon: <Users className="w-4 h-4" />, color: 'text-zinc-300', iconBg: 'bg-zinc-700/50' },
-                        { label: 'จ่ายแล้ว', val: Math.round(occupiedCount * 0.7), icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-emerald-400', iconBg: 'bg-emerald-500/10' },
-                        { label: 'ค้างชำระ', val: Math.round(occupiedCount * 0.1), icon: <AlertCircle className="w-4 h-4" />, color: 'text-red-400', iconBg: 'bg-red-500/10' },
-                        { label: 'รอชำระ', val: Math.round(occupiedCount * 0.2), icon: <Clock className="w-4 h-4" />, color: 'text-amber-400', iconBg: 'bg-amber-500/10' },
+                        { id: 'all', label: 'ผู้เช่าทั้งหมด', val: occupiedCount, icon: <Users />, color: 'text-blue-400', iconBg: 'bg-blue-500/10' },
+                        { id: 'จ่ายแล้ว', label: 'จ่ายแล้ว', val: paidCount, icon: <CheckCircle2 />, color: 'text-emerald-400', iconBg: 'bg-emerald-500/10' },
+                        { id: 'ค้างชำระ', label: 'ค้างชำระ', val: overdueCount, icon: <AlertCircle />, color: 'text-red-400', iconBg: 'bg-red-500/10' },
+                        { id: 'รอชำระ', label: 'รอชำระ', val: pendingCount, icon: <Clock />, color: 'text-amber-400', iconBg: 'bg-amber-500/10' },
                     ].map((s, i) => (
-                        <div key={i} className="bg-zinc-900 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-lg ${s.iconBg} ${s.color} flex items-center justify-center shrink-0`}>
-                                {s.icon}
+                        <button
+                            key={i}
+                            onClick={() => setFilterStatus(s.id)}
+                            className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${filterStatus === s.id ? 'bg-brand-card/80 border-brand-orange-500/50 shadow-lg shadow-brand-orange-500/10' : 'bg-brand-card/40 border-white/8 hover:border-white/20'}`}
+                        >
+                            <div className={`w-8 h-8 rounded-xl ${s.iconBg} flex items-center justify-center shrink-0 ${s.color}`}>
+                                {React.cloneElement(s.icon, { size: 16 })}
                             </div>
-                            <div>
-                                <p className="text-[10px] text-zinc-500 font-medium leading-none mb-0.5">{s.label}</p>
-                                <span className={`text-lg font-bold ${s.color} leading-none`}>{s.val}</span>
+                            <div className="flex flex-col items-start min-w-0">
+                                <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest leading-none mb-1">{s.label}</p>
+                                <p className="text-sm font-black text-white leading-none">
+                                    {s.val} <span className="text-[10px] font-bold text-brand-gray-600">คน</span>
+                                </p>
                             </div>
-                        </div>
+                        </button>
                     ))}
                 </div>
 
                 {/* ── Payment progress ─────────────────────────── */}
-                <div className="mb-4 bg-zinc-900 border border-white/5 rounded-xl px-4 py-2.5 flex items-center gap-3">
-                    <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold shrink-0">การชำระเงินเดือนนี้</span>
-                    <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-700" style={{ width: `${paymentProgress}%` }} />
+                <div className="mb-4 bg-brand-card/40 border border-white/8 rounded-2xl px-5 py-3 flex items-center gap-4">
+                    <span className="text-[10px] text-brand-gray-500 uppercase tracking-widest font-bold shrink-0">การชำระเงินเดือนนี้</span>
+                    <div className="flex-1 h-2 bg-zinc-800/50 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-700 shadow-[0_0_12px_rgba(16,185,129,0.3)]" style={{ width: `${paymentProgress}%` }} />
                     </div>
-                    <span className="text-xs font-bold text-emerald-400 shrink-0">{paymentProgress}%</span>
+                    <span className="text-xs font-black text-emerald-400 shrink-0">{paymentProgress}%</span>
                 </div>
 
                 {/* ── Toolbar ──────────────────────────────────────── */}
-                <div className="flex flex-col sm:flex-row gap-2 mb-4 items-stretch sm:items-center">
-                    <div className="flex gap-1 bg-zinc-900 border border-white/5 rounded-xl p-1 overflow-x-auto custom-scrollbar shrink-0">
+                <div className="flex flex-col sm:flex-row gap-3 mb-4 items-stretch sm:items-center">
+                    <div className="flex gap-1 bg-brand-card/50 border border-white/8 rounded-xl p-1 overflow-x-auto custom-scrollbar shrink-0">
                         {['all', ...floorsList].map(f => (
                             <button
                                 key={f} onClick={() => setFilterFloor(f.toString())}
-                                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap ${filterFloor === f.toString() ? 'bg-brand-orange-500 text-white' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                                className={`px-4 py-2 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${filterFloor === f.toString() ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-400 hover:text-white hover:bg-white/5'}`}
                             >
                                 {f === 'all' ? 'ทุกชั้น' : `ชั้น ${f}`}
                             </button>
                         ))}
                     </div>
 
-                    <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+                    <div className="relative flex-1 group">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-500 group-focus-within:text-brand-orange-500 transition-colors" />
                         <input
                             type="text" value={search} onChange={e => setSearch(e.target.value)}
                             placeholder="ค้นหาชื่อ, ห้อง, เบอร์โทร..."
-                            className="w-full h-9 bg-zinc-900 border border-white/5 rounded-xl pl-9 pr-8 text-xs font-medium text-white placeholder:text-zinc-600 outline-none focus:border-brand-orange-500/40 transition-all"
+                            className="w-full h-10 bg-brand-card/50 border border-white/8 rounded-xl pl-10 pr-10 text-xs font-bold text-white placeholder:text-brand-gray-600 outline-none focus:border-brand-orange-500/50 transition-all"
                         />
-                        {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500"><X className="w-3.5 h-3.5" /></button>}
+                        {search && <button onClick={() => setSearch('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-brand-gray-500 hover:text-white transition-colors"><X className="w-3.5 h-3.5" /></button>}
                     </div>
 
-                    <div className="flex bg-zinc-900 border border-white/5 p-1 rounded-xl shrink-0">
+                    <div className="flex bg-brand-card/50 border border-white/8 p-1 rounded-xl shrink-0">
                         <button
                             onClick={() => handleTabChange('datagrid')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${viewTab === 'datagrid' ? 'bg-brand-orange-500 text-white' : 'text-zinc-400 hover:text-white'}`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all ${viewTab === 'datagrid' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-400 hover:text-white whitespace-nowrap'}`}
                         >
                             <List className="w-3.5 h-3.5" /> รายการ
                         </button>
                         <button
                             onClick={() => handleTabChange('cards')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${viewTab === 'cards' ? 'bg-brand-orange-500 text-white' : 'text-zinc-400 hover:text-white'}`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all ${viewTab === 'cards' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-400 hover:text-white whitespace-nowrap'}`}
                         >
                             <LayoutGrid className="w-3.5 h-3.5" /> การ์ด
                         </button>
                         <button
                             onClick={() => handleTabChange('history')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${viewTab === 'history' ? 'bg-brand-orange-500 text-white' : 'text-zinc-400 hover:text-white'}`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all ${viewTab === 'history' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-400 hover:text-white whitespace-nowrap'}`}
                         >
                             <Clock className="w-3.5 h-3.5" /> ประวัติบิล
                         </button>
                     </div>
 
                     {activeAptId && activeAptId !== 'all' && (
-                        <button onClick={() => setShowQRModal(true)} className="h-9 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5">
+                        <button onClick={() => setShowQRModal(true)} className="h-10 px-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-[11px] font-bold transition-all flex items-center gap-2 whitespace-nowrap shadow-lg shadow-emerald-500/5">
                             <QrCodeIcon className="w-3.5 h-3.5" /> QR เข้าร่วม
                         </button>
                     )}
                 </div>
 
 
-                <div className="flex gap-3 items-start print:hidden">
+                <div className="flex gap-4 items-start print:hidden">
                     <div className={`transition-all duration-300 w-full min-w-0 ${selectedTenant ? 'lg:w-[58%]' : ''}`}>
                         {displayRooms.length === 0 && viewTab !== 'history' ? (
-                            <div className="text-center py-16 bg-zinc-900 rounded-xl border border-dashed border-white/10">
-                                <Users className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-                                <p className="text-zinc-400 text-sm font-medium">ไม่พบผู้เช่า</p>
+                            <div className="text-center py-20 bg-brand-card/40 border border-white/8 rounded-3xl">
+                                <Users className="w-10 h-10 text-brand-gray-700 mx-auto mb-3 opacity-20" />
+                                <p className="text-brand-gray-500 font-bold text-sm">ไม่พบข้อมูลผู้เช่า</p>
                             </div>
                         ) : viewTab === 'datagrid' ? (
-                            <div className="bg-zinc-900 border border-white/5 rounded-xl overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left">
+                            <div className="bg-brand-card/40 border border-white/8 rounded-3xl overflow-hidden shadow-2xl">
+                                <div className="overflow-x-auto custom-scrollbar">
+                                    <table className="w-full text-left border-collapse">
                                         <thead>
-                                            <tr className="border-b border-white/5">
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">ผู้เช่า</th>
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">ห้อง</th>
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest hidden md:table-cell">การติดต่อ</th>
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest hidden sm:table-cell">สถานะชำระ</th>
-                                                <th className="px-4 py-3 w-10"></th>
+                                            <tr className="bg-white/5">
+                                                <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ผู้เช่า</th>
+                                                <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ห้อง</th>
+                                                <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest hidden md:table-cell">การติดต่อ</th>
+                                                <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest hidden sm:table-cell">สถานะชำระ</th>
+                                                <th className="px-6 py-4 w-12"></th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-white/[0.04]">
@@ -566,29 +614,29 @@ export default function TenantManagement({ user }) {
                                                         key={tenant.id} onClick={() => setSelectedTenant(isSelected ? null : { ...tenant, roomNumber: room.roomNumber, roomObj: room })}
                                                         className={`cursor-pointer transition-colors group ${isSelected ? 'bg-brand-orange-500/5' : 'hover:bg-white/[0.02]'}`}
                                                     >
-                                                        <td className="px-4 py-3">
+                                                        <td className="px-6 py-4">
                                                             <div className="flex items-center gap-3">
-                                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${getAvatarBg(name)}`}>
-                                                                    {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-lg" /> : name.charAt(0)}
+                                                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-black text-white shrink-0 shadow-lg ${getAvatarBg(name)}`}>
+                                                                    {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-xl" /> : name.charAt(0)}
                                                                 </div>
-                                                                <span className="text-xs font-semibold text-zinc-200 truncate max-w-[140px]">{name}</span>
+                                                                <span className="text-sm font-bold text-zinc-200 truncate">{name}</span>
                                                             </div>
                                                         </td>
-                                                        <td className="px-4 py-3">
+                                                        <td className="px-6 py-4">
                                                             <div className="flex items-center gap-2">
-                                                                <span className="text-[11px] font-bold font-mono text-brand-orange-400">{room.roomNumber}</span>
-                                                                <span className="text-[9px] text-zinc-600 px-1.5 py-0.5 bg-zinc-800 rounded">ชั้น {room.floor}</span>
+                                                                <span className="text-[13px] font-black text-brand-orange-500">{room.roomNumber}</span>
+                                                                <span className="text-[10px] font-bold text-brand-gray-500 px-2 py-0.5 bg-white/5 rounded-lg border border-white/5">ชั้น {room.floor}</span>
                                                             </div>
                                                         </td>
-                                                        <td className="px-4 py-3 hidden md:table-cell">
-                                                            <p className="text-[11px] text-zinc-400">{tenant.phone || '—'}</p>
+                                                        <td className="px-6 py-4 hidden md:table-cell">
+                                                            <p className="text-xs font-bold text-brand-gray-400">{tenant.phone || '—'}</p>
                                                         </td>
-                                                        <td className="px-4 py-3 hidden sm:table-cell">
+                                                        <td className="px-6 py-4 hidden sm:table-cell">
                                                             <StatusPill status={isSelected ? 'paid' : 'pending'} />
                                                         </td>
-                                                        <td className="px-4 py-3 text-right">
-                                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ml-auto transition-all ${isSelected ? 'bg-brand-orange-500 text-white' : 'bg-zinc-800 text-zinc-500 group-hover:text-zinc-300'}`}>
-                                                                <ChevronRight className="w-3.5 h-3.5" />
+                                                        <td className="px-6 py-4 text-right">
+                                                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ml-auto transition-all shadow-lg ${isSelected ? 'bg-brand-orange-500 text-brand-bg' : 'bg-white/5 text-brand-gray-500 group-hover:bg-white/10 group-hover:text-white'}`}>
+                                                                <ChevronRight className="w-4 h-4" />
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -599,11 +647,11 @@ export default function TenantManagement({ user }) {
                                 </div>
                             </div>
                         ) : viewTab === 'cards' ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                                 {displayRooms.length === 0 ? (
-                                    <div className="col-span-full text-center py-16 bg-zinc-900 rounded-xl border border-dashed border-white/10">
-                                        <Users className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-                                        <p className="text-zinc-400 text-sm font-medium">ไม่พบผู้เช่า</p>
+                                    <div className="col-span-full text-center py-20 bg-brand-card/40 border border-white/8 rounded-3xl">
+                                        <Users className="w-10 h-10 text-brand-gray-700 mx-auto mb-3 opacity-20" />
+                                        <p className="text-brand-gray-500 font-bold text-sm">ไม่พบข้อมูลผู้เช่า</p>
                                     </div>
                                 ) : (
                                     displayRooms.map(room => {
@@ -613,18 +661,18 @@ export default function TenantManagement({ user }) {
                                         return (
                                             <button
                                                 key={tenant.id} onClick={() => setSelectedTenant(isSelected ? null : { ...tenant, roomNumber: room.roomNumber, roomObj: room })}
-                                                className={`p-3 rounded-xl border transition-all text-left active:scale-95 ${isSelected ? 'bg-brand-orange-500/10 border-brand-orange-500/40 shadow-lg' : 'bg-zinc-900 border-white/5 hover:border-white/10'}`}
+                                                className={`p-4 bg-brand-card/40 border border-white/8 rounded-2xl transition-all text-left group relative hover:border-brand-orange-500/30 hover:shadow-xl ${isSelected ? 'ring-2 ring-brand-orange-500 bg-brand-orange-500/5 shadow-brand-orange-500/10' : ''}`}
                                             >
-                                                <div className="flex justify-between items-start mb-3">
-                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold text-white ${getAvatarBg(name)}`}>
-                                                        {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-lg" /> : name.charAt(0)}
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-black text-white shadow-lg shrink-0 ${getAvatarBg(name)}`}>
+                                                        {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-xl" /> : name.charAt(0)}
                                                     </div>
-                                                    <span className="text-[11px] font-bold font-mono text-brand-orange-400">{room.roomNumber}</span>
+                                                    <span className="text-[13px] font-black text-brand-orange-500 leading-none">{room.roomNumber}</span>
                                                 </div>
-                                                <p className="text-xs font-bold text-white truncate mb-1">{name}</p>
+                                                <p className="text-sm font-bold text-white truncate mb-2">{name}</p>
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[9px] text-zinc-500 uppercase">ชั้น {room.floor}</span>
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                    <span className="text-[10px] font-bold text-brand-gray-500 px-2 py-0.5 bg-white/5 rounded-lg border border-white/5 uppercase">ชั้น {room.floor}</span>
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                                                 </div>
                                             </button>
                                         );
@@ -632,70 +680,69 @@ export default function TenantManagement({ user }) {
                                 )}
                             </div>
                         ) : (
-                            <div className="bg-zinc-900 border border-white/5 rounded-xl overflow-hidden min-h-[500px] flex flex-col">
+                            <div className="bg-brand-card/40 border border-white/8 rounded-3xl overflow-hidden min-h-[500px] flex flex-col shadow-2xl">
                                 {sq || filterYear !== 'all' || filterMonth !== 'all' ? (
-                                    <div className="px-4 py-2 bg-brand-orange-500/10 border-b border-white/5 flex flex-wrap items-center justify-between gap-y-2">
+                                    <div className="px-6 py-3 bg-brand-orange-500/10 border-b border-white/8 flex flex-wrap items-center justify-between gap-y-2">
                                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                                            <p className="text-[10px] font-bold text-brand-orange-400 uppercase tracking-widest">การกรอง:</p>
-                                            {sq && <span className="text-[10px] text-white">ค้นหา: {sq}</span>}
-                                            {filterYear !== 'all' && <span className="text-[10px] text-white">ปี: {filterYear}</span>}
-                                            {filterMonth !== 'all' && <span className="text-[10px] text-white">เดือน: {thMonths[parseInt(filterMonth)-1] || ''}</span>}
+                                            <p className="text-[10px] font-black text-brand-orange-500 uppercase tracking-widest">การกรอง:</p>
+                                            {sq && <span className="text-[10px] font-bold text-white">ค้นหา: {sq}</span>}
+                                            {filterYear !== 'all' && <span className="text-[10px] font-bold text-white">ปี: {filterYear}</span>}
+                                            {filterMonth !== 'all' && <span className="text-[10px] font-bold text-white">เดือน: {thMonths[parseInt(filterMonth) - 1] || ''}</span>}
                                         </div>
-                                        <button 
+                                        <button
                                             onClick={() => { setSearch(''); setFilterYear('all'); setFilterMonth('all'); }}
-                                            className="text-[10px] font-bold text-zinc-500 hover:text-white transition-colors"
+                                            className="text-[10px] font-black text-brand-gray-500 hover:text-white transition-colors uppercase tracking-widest underline underline-offset-4 decoration-white/10"
                                         >
                                             ล้างตัวกรอง
                                         </button>
                                     </div>
                                 ) : null}
-                                
-                                <div className="px-4 py-3 border-b border-white/5 bg-zinc-900/50 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
+
+                                <div className="px-6 py-4 border-b border-white/8 bg-white/5 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
                                     <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <select 
-                                                value={filterYear} onChange={e => setFilterYear(e.target.value)}
-                                                className="bg-zinc-800 border border-white/10 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-brand-orange-500/50"
-                                            >
-                                                <option value="all">ทุกปี</option>
-                                                {availableYears.map(y => (
-                                                    <option key={y} value={y}>{y}</option>
-                                                ))}
-                                            </select>
-                                            <select 
-                                                value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
-                                                className="bg-zinc-800 border border-white/10 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-brand-orange-500/50"
-                                            >
-                                                <option value="all">ทุกเดือน</option>
-                                                {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
-                                                    <option key={m} value={m}>{thMonths[i]}</option>
-                                                ))}
-                                            </select>
-                                        </div>
+                                        <select
+                                            value={filterYear} onChange={e => setFilterYear(e.target.value)}
+                                            className="bg-brand-card/50 border border-white/10 rounded-xl px-3 py-1.5 text-[10px] font-black text-white outline-none focus:border-brand-orange-500/50 appearance-none hover:bg-white/10 transition-all cursor-pointer"
+                                        >
+                                            <option value="all">ทุกปี</option>
+                                            {availableYears.map(y => (
+                                                <option key={y} value={y}>{y}</option>
+                                            ))}
+                                        </select>
+                                        <select
+                                            value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
+                                            className="bg-brand-card/50 border border-white/10 rounded-xl px-3 py-1.5 text-[10px] font-black text-white outline-none focus:border-brand-orange-500/50 appearance-none hover:bg-white/10 transition-all cursor-pointer"
+                                        >
+                                            <option value="all">ทุกเดือน</option>
+                                            {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((m, i) => (
+                                                <option key={m} value={m}>{thMonths[i]}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                     <button
-                                        onClick={() => setShowPrintModal(true)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-orange-500/10 border border-brand-orange-500/30 text-[10px] font-bold text-brand-orange-400 hover:bg-brand-orange-500/20 transition-all shadow-sm"
+                                        onClick={() => { setPrintPaymentId(null); setShowPrintModal(true); }}
+                                        className="h-9 px-4 bg-brand-orange-500/10 hover:bg-brand-orange-500/20 border border-brand-orange-500/30 text-brand-orange-500 rounded-xl text-[11px] font-black transition-all flex items-center gap-2 shadow-lg shadow-brand-orange-500/5 group"
                                     >
-                                        <Printer className="w-3.5 h-3.5" /> พิมพ์ / PDF
+                                        <Printer className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" /> พิมพ์สรุป / PDF
                                     </button>
                                 </div>
 
-                                <div className="flex-1 overflow-auto custom-scrollbar bg-zinc-950/20 print:overflow-visible print:bg-transparent">
+                                <div className="flex-1 overflow-auto custom-scrollbar bg-white/[0.02] print:overflow-visible print:bg-transparent">
                                     <table className="w-full text-left border-collapse print:text-black">
                                         <thead>
-                                            <tr className="border-b border-white/5 bg-white/[0.02] sticky top-0 z-10 backdrop-blur-md print:bg-transparent print:border-black print:static print:text-black">
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest print:text-black print:font-bold">เดือน/ปี</th>
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest print:text-black print:font-bold">ห้อง</th>
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest hidden md:table-cell print:table-cell print:text-black print:font-bold">ผู้เช่า</th>
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-right print:text-black print:font-bold">จำนวนเงิน</th>
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-center print:hidden">หลักฐาน</th>
-                                                <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-center print:text-black print:font-bold">สถานะ</th>
+                                            <tr className="bg-white/5 sticky top-0 z-10 backdrop-blur-xl border-b border-white/8 print:bg-transparent print:border-black print:static print:text-black">
+                                                <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest print:text-black print:font-bold">เดือน/ปี</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest print:text-black print:font-bold">ห้อง</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest hidden md:table-cell print:table-cell print:text-black print:font-bold">ผู้เช่า</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest text-right print:text-black print:font-bold">จำนวนเงิน</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest text-center print:hidden">หลักฐาน</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest text-center print:text-black print:font-bold">สถานะ</th>
+                                                <th className="px-6 py-4 w-12 print:hidden"></th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-white/[0.04] print:divide-black/20">
                                             {allAptPayments.length === 0 ? (
-                                                <tr><td colSpan="6" className="px-4 py-16 text-center text-zinc-600 text-[11px] font-medium italic print:text-black">ยังไม่มีประวัติการชำระเงิน</td></tr>
+                                                <tr><td colSpan="7" className="px-6 py-20 text-center text-brand-gray-600 text-[11px] font-black italic tracking-widest uppercase opacity-40 print:text-black">ยังไม่มีประวัติการชำระเงิน</td></tr>
                                             ) : allAptPayments.filter(p => {
                                                 const matchesSearch = !sq || p.roomNumber?.toLowerCase().includes(sq) || p.tenantName?.toLowerCase().includes(sq) || (p.month && p.month.toLowerCase().includes(sq));
                                                 const [y, m] = (p.month || '').split('-');
@@ -703,41 +750,51 @@ export default function TenantManagement({ user }) {
                                                 const matchesMonth = filterMonth === 'all' || m === filterMonth;
                                                 return matchesSearch && matchesYear && matchesMonth;
                                             }).map(p => (
-                                                <tr key={p.id} className="hover:bg-white/[0.02] transition-colors group print:border-b print:border-black/10">
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-7 h-7 rounded bg-zinc-800 flex items-center justify-center shrink-0 print:hidden"><Calendar className="w-3.5 h-3.5 text-zinc-500 group-hover:text-brand-orange-400 transition-colors" /></div>
-                                                            <span className="text-xs font-bold text-zinc-200 print:text-black">{p.month === 'first_bill' ? 'ค่าแรกเข้า' : p.month}</span>
+                                                <tr key={p.id} className="hover:bg-white/[0.04] transition-colors group border-b border-white/[0.04] last:border-0 print:border-b print:border-black/10">
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0 shadow-lg group-hover:bg-brand-orange-500/10 transition-colors print:hidden"><Calendar className="w-4 h-4 text-brand-gray-500 group-hover:text-brand-orange-500 transition-all" /></div>
+                                                            <span className="text-xs font-black text-zinc-200 print:text-black uppercase tracking-tighter">{p.month === 'first_bill' ? 'ค่าแรกเข้า' : p.month}</span>
                                                         </div>
                                                     </td>
-                                                    <td className="px-4 py-3">
-                                                        <span className="text-[11px] font-bold font-mono text-brand-orange-400 print:text-black">{p.roomNumber}</span>
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-[13px] font-black text-brand-orange-500 print:text-black">{p.roomNumber}</span>
                                                     </td>
-                                                    <td className="px-4 py-3 hidden md:table-cell print:table-cell">
-                                                        <span className="text-[11px] text-zinc-400 truncate max-w-[120px] inline-block print:text-black">{p.tenantName || '—'}</span>
+                                                    <td className="px-6 py-4 hidden md:table-cell print:table-cell">
+                                                        <span className="text-xs font-bold text-brand-gray-400 truncate max-w-[140px] inline-block print:text-black">{p.tenantName || '—'}</span>
                                                     </td>
-                                                    <td className="px-4 py-3 text-right">
-                                                        <span className="text-xs font-bold text-zinc-100 print:text-black">{p.amount?.toLocaleString()} ฿</span>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <span className="text-sm font-black text-brand-gray-200 print:text-black">{p.amount?.toLocaleString()} <span className="text-[10px] font-bold text-brand-gray-600 ml-0.5">฿</span></span>
                                                     </td>
-                                                    <td className="px-4 py-3 text-center print:hidden">
+                                                    <td className="px-6 py-4 text-center print:hidden">
                                                         {p.slipUrl ? (
-                                                            <button 
+                                                            <button
                                                                 onClick={() => setPreviewSlipUrl(p.slipUrl)}
-                                                                className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-400 hover:text-brand-orange-400 hover:bg-brand-orange-500/10 transition-all flex items-center justify-center mx-auto"
+                                                                className="w-8 h-8 rounded-xl bg-white/5 text-brand-gray-500 hover:text-white hover:bg-white/10 transition-all flex items-center justify-center mx-auto shadow-lg"
+                                                                title="ดูหลักฐาน"
                                                             >
-                                                                <ImageIcon className="w-3.5 h-3.5" />
+                                                                <ImageIcon className="w-4 h-4" />
                                                             </button>
                                                         ) : (
-                                                            <span className="text-[10px] text-zinc-700 print:text-black">—</span>
+                                                            <span className="text-[10px] font-bold text-zinc-700 italic">—</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3 text-center print:w-24">
+                                                    <td className="px-6 py-4 text-center">
                                                         <div className="print:hidden">
                                                             <StatusPill status={p.status} />
                                                         </div>
                                                         <div className="hidden print:block text-xs font-bold w-full text-center">
                                                             {normalizeStatus(p.status)}
                                                         </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center print:hidden">
+                                                        <button
+                                                            onClick={() => handleInstantPrint(p)}
+                                                            className="w-8 h-8 rounded-xl bg-brand-orange-500/10 text-brand-orange-500 hover:bg-brand-orange-500/20 active:scale-95 transition-all flex items-center justify-center mx-auto shadow-lg border border-brand-orange-500/20 group/print"
+                                                            title="พิมพ์ใบเสร็จ"
+                                                        >
+                                                            <Printer className="w-4 h-4 group-hover/print:scale-110 transition-transform" />
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -768,7 +825,20 @@ export default function TenantManagement({ user }) {
                                                 <StatusPill status="paid" />
                                             </div>
                                         </div>
-                                        <button onClick={() => setSelectedTenant(null)} className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-400 flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
+                                        <div className="flex items-center gap-1.5">
+                                            {selectedTenant.roomNumber && (
+                                                <button
+                                                    onClick={() => navigate(`/rooms?room=${selectedTenant.roomNumber}`)}
+                                                    className="w-7 h-7 rounded-lg bg-brand-orange-500/10 text-brand-orange-400 hover:bg-brand-orange-500/20 flex items-center justify-center transition-all border border-brand-orange-500/20"
+                                                    title="ไปที่ห้องพัก"
+                                                >
+                                                    <Home className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                            <button onClick={() => setSelectedTenant(null)} className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-400 flex items-center justify-center transition-all hover:bg-zinc-700 hover:text-white">
+                                                <X className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="overflow-y-auto flex-1 divide-y divide-white/[0.04]">
@@ -800,19 +870,46 @@ export default function TenantManagement({ user }) {
                                                     <ArrowRightLeft className="w-3.5 h-3.5" /> ย้ายห้อง
                                                 </button>
                                                 <button onClick={() => setShowMoveOutConfirm(true)} className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] font-bold text-red-400 hover:bg-red-500/20 transition-all">
+                                                    ```
                                                     <LogOut className="w-3.5 h-3.5" /> แจ้งย้ายออก
                                                 </button>
                                             </div>
                                             {showTransfer && (
-                                                <div className="mt-3 p-3 bg-zinc-900 rounded-xl border border-brand-orange-500/30 animate-in fade-in slide-in-from-top-2">
-                                                    <p className="text-[11px] font-bold text-white mb-2">เลือกห้องใหม่</p>
-                                                    <select value={transferRoom} onChange={e => setTransferRoom(e.target.value)} className="w-full bg-zinc-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-white mb-3 focus:border-brand-orange-500 outline-none">
-                                                        <option value="">เลือกห้อง...</option>
-                                                        {vacantRooms.map(r => <option key={r.roomNumber} value={r.roomNumber}>{r.roomNumber} - ชั้น {r.floor}</option>)}
-                                                    </select>
-                                                    <div className="flex gap-2">
-                                                        <button onClick={() => setShowTransfer(false)} className="flex-1 py-1.5 text-[10px] font-bold text-zinc-500 hover:text-white">ยกเลิก</button>
-                                                        <button onClick={handleTransferRoom} disabled={!transferRoom || transferSaving} className="flex-1 py-1.5 bg-brand-orange-500 text-white rounded-lg text-[10px] font-bold disabled:opacity-40">{transferSaving ? '...' : 'ยืนยัน'}</button>
+                                                <div className="mt-3 p-3 bg-zinc-900 rounded-xl border border-brand-orange-500/30 animate-in fade-in slide-in-from-top-2 space-y-3">
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div>
+                                                            <p className="text-[10px] font-bold text-zinc-500 mb-1.5 uppercase tracking-wider">เลือกชั้น</p>
+                                                            <select
+                                                                value={transferFloor}
+                                                                onChange={e => { setTransferFloor(e.target.value); setTransferRoom(''); }}
+                                                                className="w-full bg-zinc-950 border border-white/10 rounded-lg px-2.5 py-2 text-xs text-white focus:border-brand-orange-500 outline-none"
+                                                            >
+                                                                <option value="all">ทุกชั้น</option>
+                                                                {floorsList.map(f => <option key={f} value={f}>ชั้น {f}</option>)}
+                                                            </select>
+                                                        </div>
+
+                                                        <div>
+                                                            <p className="text-[10px] font-bold text-zinc-500 mb-1.5 uppercase tracking-wider">เลือกห้องใหม่</p>
+                                                            <select
+                                                                value={transferRoom}
+                                                                onChange={e => setTransferRoom(e.target.value)}
+                                                                className="w-full bg-zinc-950 border border-white/10 rounded-lg px-2.5 py-2 text-xs text-white focus:border-brand-orange-500 outline-none"
+                                                            >
+                                                                <option value="">เลือกห้อง...</option>
+                                                                {vacantRooms
+                                                                    .filter(r => transferFloor === 'all' || r.floor === parseInt(transferFloor))
+                                                                    .map(r => (
+                                                                        <option key={r.roomNumber} value={r.roomNumber}>{r.roomNumber}</option>
+                                                                    ))
+                                                                }
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex gap-2 pt-1 border-t border-white/5 mt-2">
+                                                        <button onClick={() => setShowTransfer(false)} className="flex-1 py-2 text-[10px] font-bold text-zinc-500 hover:text-white transition-colors">ยกเลิก</button>
+                                                        <button onClick={handleTransferRoom} disabled={!transferRoom || transferSaving} className="flex-1 py-2 bg-brand-orange-500 text-white rounded-lg text-[10px] font-bold disabled:opacity-40 shadow-lg shadow-brand-orange-500/20">{transferSaving ? 'กำลังบันทึก...' : 'ยืนยันการย้าย'}</button>
                                                     </div>
                                                 </div>
                                             )}
@@ -892,9 +989,9 @@ export default function TenantManagement({ user }) {
                             <img src={previewSlipUrl} alt="Payment Slip" className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-2xl" />
                         </div>
                         <div className="px-6 py-4 bg-zinc-950 text-center">
-                            <a 
-                                href={previewSlipUrl} 
-                                target="_blank" 
+                            <a
+                                href={previewSlipUrl}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-2 text-[11px] font-bold text-zinc-400 hover:text-white transition-all"
                             >
@@ -915,7 +1012,7 @@ export default function TenantManagement({ user }) {
                     </div>
                     <div className="text-right">
                         <h2 className="text-xl font-bold text-brand-orange-500 underline decoration-brand-orange-500/30 underline-offset-4 leading-relaxed">{printTitle}</h2>
-                        <p className="text-zinc-400 text-[10px] mt-2 italic font-medium">ออกโดย: {user?.displayName || 'Admin'} • {new Date().toLocaleDateString('th-TH', { 
+                        <p className="text-zinc-400 text-[10px] mt-2 italic font-medium">ออกโดย: {user?.displayName || 'Admin'} • {new Date().toLocaleDateString('th-TH', {
                             year: 'numeric', month: 'long', day: 'numeric',
                             hour: '2-digit', minute: '2-digit'
                         })}</p>
@@ -1013,8 +1110,8 @@ export default function TenantManagement({ user }) {
                         <div className="grid grid-cols-3 gap-1.5 bg-zinc-900 border border-white/5 rounded-xl p-1 mb-4">
                             {[
                                 { key: 'month', label: 'รายเดือน' },
-                                { key: 'year',  label: 'รายปี' },
-                                { key: 'all',   label: 'ทั้งหมด' },
+                                { key: 'year', label: 'รายปี' },
+                                { key: 'all', label: 'ทั้งหมด' },
                             ].map(opt => (
                                 <button
                                     key={opt.key}
@@ -1050,7 +1147,7 @@ export default function TenantManagement({ user }) {
                                             onChange={e => setPrintMonth(e.target.value)}
                                             className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-brand-orange-500/50 transition-all"
                                         >
-                                            {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+                                            {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((m, i) => (
                                                 <option key={m} value={m}>{thMonthsFull[i]}</option>
                                             ))}
                                         </select>
