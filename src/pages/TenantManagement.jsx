@@ -89,6 +89,12 @@ export default function TenantManagement({ user }) {
     // Evidence preview state
     const [previewSlipUrl, setPreviewSlipUrl] = useState(null);
 
+    // Print modal state
+    const [showPrintModal, setShowPrintModal] = useState(false);
+    const [printMode, setPrintMode] = useState('month'); // 'month' | 'year' | 'all'
+    const [printYear, setPrintYear] = useState(String(new Date().getFullYear()));
+    const [printMonth, setPrintMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+
     // room-transfer state
     const [showTransfer, setShowTransfer] = useState(false);
     const [transferRoom, setTransferRoom] = useState('');
@@ -401,6 +407,42 @@ export default function TenantManagement({ user }) {
     const totalRooms = rooms.length;
     const paymentProgress = 75; // Mock for now
 
+    // ── print helpers ─────────────────────────────────────────────────────────
+    const availableYears = [...new Set(allAptPayments.map(p => {
+        const y = p.month?.split('-')[0];
+        return (y && /^\d{4}$/.test(y)) ? y : null;
+    }))].filter(Boolean).sort((a, b) => b - a);
+
+    const getPrintData = () => {
+        return allAptPayments.filter(p => {
+            const matchesSearch = !sq || p.roomNumber?.toLowerCase().includes(sq) || p.tenantName?.toLowerCase().includes(sq) || (p.month && p.month.toLowerCase().includes(sq));
+            if (!matchesSearch) return false;
+
+            const [y, m] = (p.month || '').split('-');
+            if (printMode === 'month') return y === printYear && m === printMonth;
+            if (printMode === 'year')  return y === printYear;
+            return true; // 'all'
+        });
+    };
+
+    const handlePrintPDF = () => {
+        setShowPrintModal(false);
+        setTimeout(() => window.print(), 300);
+    };
+
+    const printData = getPrintData();
+    const printTotal = printData.reduce((s, p) => s + (p.amount || 0), 0);
+    const printPaid  = printData.filter(p => normalizeStatus(p.status) === 'จ่ายแล้ว').reduce((s, p) => s + (p.amount || 0), 0);
+    const printUnpaid = printTotal - printPaid;
+
+    const printTitle = `${printMode === 'month'
+        ? `รายงานการชำระเงิน เดือน${thMonthsFull[parseInt(printMonth) - 1]} ${parseInt(printYear) + 543}`
+        : printMode === 'year'
+            ? `รายงานการชำระเงิน ประจำปี ${parseInt(printYear) + 543}`
+            : `รายงานการชำระเงินทั้งหมด`}${sq ? ` [ ${sq} ]` : ''}`;
+
+
+
     if (loading) return (
         <div className="flex h-screen w-full items-center justify-center bg-brand-bg">
             <div className="w-10 h-10 border-4 border-brand-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -493,7 +535,8 @@ export default function TenantManagement({ user }) {
                     )}
                 </div>
 
-                <div className="flex gap-3 items-start">
+
+                <div className="flex gap-3 items-start print:hidden">
                     <div className={`transition-all duration-300 w-full min-w-0 ${selectedTenant ? 'lg:w-[58%]' : ''}`}>
                         {displayRooms.length === 0 && viewTab !== 'history' ? (
                             <div className="text-center py-16 bg-zinc-900 rounded-xl border border-dashed border-white/10">
@@ -596,7 +639,7 @@ export default function TenantManagement({ user }) {
                                             <p className="text-[10px] font-bold text-brand-orange-400 uppercase tracking-widest">การกรอง:</p>
                                             {sq && <span className="text-[10px] text-white">ค้นหา: {sq}</span>}
                                             {filterYear !== 'all' && <span className="text-[10px] text-white">ปี: {filterYear}</span>}
-                                            {filterMonth !== 'all' && <span className="text-[10px] text-white">เดือน: {thMonths[parseInt(filterMonth)-1]}</span>}
+                                            {filterMonth !== 'all' && <span className="text-[10px] text-white">เดือน: {thMonths[parseInt(filterMonth)-1] || ''}</span>}
                                         </div>
                                         <button 
                                             onClick={() => { setSearch(''); setFilterYear('all'); setFilterMonth('all'); }}
@@ -615,7 +658,7 @@ export default function TenantManagement({ user }) {
                                                 className="bg-zinc-800 border border-white/10 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-brand-orange-500/50"
                                             >
                                                 <option value="all">ทุกปี</option>
-                                                {[...new Set(allAptPayments.map(p => p.month?.split('-')[0]))].filter(Boolean).sort((a,b)=>b-a).map(y => (
+                                                {availableYears.map(y => (
                                                     <option key={y} value={y}>{y}</option>
                                                 ))}
                                             </select>
@@ -631,22 +674,11 @@ export default function TenantManagement({ user }) {
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => window.print()}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-white/10 text-[10px] font-bold text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all shadow-sm"
+                                        onClick={() => setShowPrintModal(true)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-orange-500/10 border border-brand-orange-500/30 text-[10px] font-bold text-brand-orange-400 hover:bg-brand-orange-500/20 transition-all shadow-sm"
                                     >
-                                        <Printer className="w-3.5 h-3.5" /> พิมพ์รายงาน
+                                        <Printer className="w-3.5 h-3.5" /> พิมพ์ / PDF
                                     </button>
-                                </div>
-
-                                {/* Print Header (Only visible when printing) */}
-                                <div className="hidden print:block px-4 py-4 border-b border-black text-black">
-                                    <h2 className="text-xl font-bold mb-1">รายงานประวัติผู้เช่าและการชำระเงิน</h2>
-                                    <p className="text-sm">
-                                        {currentApt?.name ? `อาคาร: ${currentApt.name}` : ''} 
-                                        {filterYear !== 'all' ? ` | ปี: ${filterYear}` : ' | รวมทุกปี'} 
-                                        {filterMonth !== 'all' ? ` | เดือน: ${thMonthsFull[parseInt(filterMonth)-1]}` : ''}
-                                        {sq ? ` | ค้นหา: "${sq}"` : ''}
-                                    </p>
                                 </div>
 
                                 <div className="flex-1 overflow-auto custom-scrollbar bg-zinc-950/20 print:overflow-visible print:bg-transparent">
@@ -659,58 +691,58 @@ export default function TenantManagement({ user }) {
                                                 <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-right print:text-black print:font-bold">จำนวนเงิน</th>
                                                 <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-center print:hidden">หลักฐาน</th>
                                                 <th className="px-4 py-3 text-[10px] font-semibold text-zinc-500 uppercase tracking-widest text-center print:text-black print:font-bold">สถานะ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/[0.04] print:divide-black/20">
+                                            {allAptPayments.length === 0 ? (
+                                                <tr><td colSpan="6" className="px-4 py-16 text-center text-zinc-600 text-[11px] font-medium italic print:text-black">ยังไม่มีประวัติการชำระเงิน</td></tr>
+                                            ) : allAptPayments.filter(p => {
+                                                const matchesSearch = !sq || p.roomNumber?.toLowerCase().includes(sq) || p.tenantName?.toLowerCase().includes(sq) || (p.month && p.month.toLowerCase().includes(sq));
+                                                const [y, m] = (p.month || '').split('-');
+                                                const matchesYear = filterYear === 'all' || y === filterYear;
+                                                const matchesMonth = filterMonth === 'all' || m === filterMonth;
+                                                return matchesSearch && matchesYear && matchesMonth;
+                                            }).map(p => (
+                                                <tr key={p.id} className="hover:bg-white/[0.02] transition-colors group print:border-b print:border-black/10">
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-7 h-7 rounded bg-zinc-800 flex items-center justify-center shrink-0 print:hidden"><Calendar className="w-3.5 h-3.5 text-zinc-500 group-hover:text-brand-orange-400 transition-colors" /></div>
+                                                            <span className="text-xs font-bold text-zinc-200 print:text-black">{p.month === 'first_bill' ? 'ค่าแรกเข้า' : p.month}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="text-[11px] font-bold font-mono text-brand-orange-400 print:text-black">{p.roomNumber}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 hidden md:table-cell print:table-cell">
+                                                        <span className="text-[11px] text-zinc-400 truncate max-w-[120px] inline-block print:text-black">{p.tenantName || '—'}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <span className="text-xs font-bold text-zinc-100 print:text-black">{p.amount?.toLocaleString()} ฿</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center print:hidden">
+                                                        {p.slipUrl ? (
+                                                            <button 
+                                                                onClick={() => setPreviewSlipUrl(p.slipUrl)}
+                                                                className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-400 hover:text-brand-orange-400 hover:bg-brand-orange-500/10 transition-all flex items-center justify-center mx-auto"
+                                                            >
+                                                                <ImageIcon className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-[10px] text-zinc-700 print:text-black">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center print:w-24">
+                                                        <div className="print:hidden">
+                                                            <StatusPill status={p.status} />
+                                                        </div>
+                                                        <div className="hidden print:block text-xs font-bold w-full text-center">
+                                                            {normalizeStatus(p.status)}
+                                                        </div>
+                                                    </td>
                                                 </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-white/[0.04] print:divide-black/20">
-                                                {allAptPayments.length === 0 ? (
-                                                    <tr><td colSpan="6" className="px-4 py-16 text-center text-zinc-600 text-[11px] font-medium italic print:text-black">ยังไม่มีประวัติการชำระเงิน</td></tr>
-                                                ) : allAptPayments.filter(p => {
-                                                    const matchesSearch = !sq || p.roomNumber?.toLowerCase().includes(sq) || p.tenantName?.toLowerCase().includes(sq) || p.month?.includes(sq);
-                                                    const [y, m] = (p.month || '').split('-');
-                                                    const matchesYear = filterYear === 'all' || y === filterYear;
-                                                    const matchesMonth = filterMonth === 'all' || m === filterMonth;
-                                                    return matchesSearch && matchesYear && matchesMonth;
-                                                }).map(p => (
-                                                    <tr key={p.id} className="hover:bg-white/[0.02] transition-colors group print:border-b print:border-black/10">
-                                                        <td className="px-4 py-3">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="w-7 h-7 rounded bg-zinc-800 flex items-center justify-center shrink-0 print:hidden"><Calendar className="w-3.5 h-3.5 text-zinc-500 group-hover:text-brand-orange-400 transition-colors" /></div>
-                                                                <span className="text-xs font-bold text-zinc-200 print:text-black">{p.month === 'first_bill' ? 'ค่าแรกเข้า' : p.month}</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3">
-                                                            <span className="text-[11px] font-bold font-mono text-brand-orange-400 print:text-black">{p.roomNumber}</span>
-                                                        </td>
-                                                        <td className="px-4 py-3 hidden md:table-cell print:table-cell">
-                                                            <span className="text-[11px] text-zinc-400 truncate max-w-[120px] inline-block print:text-black">{p.tenantName || '—'}</span>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right">
-                                                            <span className="text-xs font-bold text-zinc-100 print:text-black">{p.amount?.toLocaleString()} ฿</span>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center print:hidden">
-                                                            {p.slipUrl ? (
-                                                                <button 
-                                                                    onClick={() => setPreviewSlipUrl(p.slipUrl)}
-                                                                    className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-400 hover:text-brand-orange-400 hover:bg-brand-orange-500/10 transition-all flex items-center justify-center mx-auto"
-                                                                >
-                                                                    <ImageIcon className="w-3.5 h-3.5" />
-                                                                </button>
-                                                            ) : (
-                                                                <span className="text-[10px] text-zinc-700 print:text-black">—</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center print:w-24">
-                                                            <div className="print:hidden">
-                                                                <StatusPill status={p.status} />
-                                                            </div>
-                                                            <div className="hidden print:block text-xs font-bold w-full text-center">
-                                                                {normalizeStatus(p.status)}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         )}
@@ -759,6 +791,8 @@ export default function TenantManagement({ user }) {
                                             ))}
                                         </div>
 
+
+
                                         <div className="px-5 py-4">
                                             <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-3">จัดการห้องพัก</p>
                                             <div className="grid grid-cols-2 gap-2">
@@ -787,7 +821,18 @@ export default function TenantManagement({ user }) {
 
                                     </div>
 
-                                    <div className="px-5 py-4 border-t border-white/5 bg-zinc-950 flex gap-2">
+                                    <div className="px-5 py-4 border-t border-white/5 bg-zinc-950 flex flex-col gap-2">
+                                        <button
+                                            onClick={() => {
+                                                const name = selectedTenant.name || selectedTenant.displayName || '';
+                                                setSearch(name);
+                                                handleTabChange('history');
+                                                setSelectedTenant(null);
+                                            }}
+                                            className="w-full py-2.5 bg-brand-orange-500/10 hover:bg-brand-orange-500/20 border border-brand-orange-500/30 text-brand-orange-400 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <Clock className="w-3.5 h-3.5" /> ดูประวัติการชำระ
+                                        </button>
                                         <button onClick={() => handleResetPassword(selectedTenant.email)} className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-white/5">
                                             <KeyRound className="w-3.5 h-3.5" /> รีเซ็ตรหัสผ่าน
                                         </button>
@@ -855,6 +900,203 @@ export default function TenantManagement({ user }) {
                             >
                                 <ExternalLink className="w-3.5 h-3.5" /> เปิดในหน้าต่างใหม่
                             </a>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Print Area (Visible only when printing) ───────────────── */}
+            <div className="print-area hidden print:block bg-white text-black p-0">
+                <div className="flex justify-between items-start mb-8 border-b-2 border-zinc-100 pb-6">
+                    <div>
+                        <h1 className="text-2xl font-black text-zinc-900 mb-1">{currentApt?.name || 'GrowApart Apartment'}</h1>
+                        <p className="text-zinc-500 text-sm">เลขที่ 123/45 ถนนราชพฤกษ์ แขวงตลิ่งชัน เขตตลิ่งชัน กรุงเทพฯ 10170</p>
+                        <p className="text-zinc-500 text-sm">โทร: 02-123-4567, 081-234-5678</p>
+                    </div>
+                    <div className="text-right">
+                        <h2 className="text-xl font-bold text-brand-orange-500 underline decoration-brand-orange-500/30 underline-offset-4 leading-relaxed">{printTitle}</h2>
+                        <p className="text-zinc-400 text-[10px] mt-2 italic font-medium">ออกโดย: {user?.displayName || 'Admin'} • {new Date().toLocaleDateString('th-TH', { 
+                            year: 'numeric', month: 'long', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit'
+                        })}</p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 mb-8">
+                    <div className="bg-zinc-50 rounded-2xl p-5 border border-zinc-100">
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">ยอดรวมประเมิน</p>
+                        <p className="text-2xl font-black text-zinc-900">{printTotal.toLocaleString()} <span className="text-sm font-bold text-zinc-400 ml-1">฿</span></p>
+                    </div>
+                    <div className="bg-emerald-50 rounded-2xl p-5 border border-emerald-100">
+                        <p className="text-[10px] font-bold text-emerald-600/60 uppercase tracking-widest mb-1.5">ชำระแล้วเรียบร้อย</p>
+                        <p className="text-2xl font-black text-emerald-600">{printPaid.toLocaleString()} <span className="text-sm font-bold text-emerald-300 ml-1">฿</span></p>
+                    </div>
+                    <div className="bg-red-50 rounded-2xl p-5 border border-red-100">
+                        <p className="text-[10px] font-bold text-red-600/60 uppercase tracking-widest mb-1.5">ยอดคงเหลือค้างจ่าย</p>
+                        <p className="text-2xl font-black text-red-600">{printUnpaid.toLocaleString()} <span className="text-sm font-bold text-red-300 ml-1">฿</span></p>
+                    </div>
+                </div>
+
+                <table className="w-full text-left border-collapse mb-10 overflow-hidden rounded-t-xl border border-zinc-100">
+                    <thead>
+                        <tr className="bg-zinc-900 text-white">
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider">ลำดับ</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider">งวดเดือน/ปี</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider">ห้อง</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider">รายชื่อผู้เช่า</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-right">จำนวนเงิน</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-center">ผลการชำระ</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                        {printData.length === 0 ? (
+                            <tr><td colSpan="6" className="px-4 py-20 text-center text-zinc-400 italic text-sm font-medium">ไม่พบข้อมูลการชำระเงินในช่วงเวลาที่เลือก</td></tr>
+                        ) : printData.map((p, idx) => (
+                            <tr key={p.id} className="even:bg-zinc-50/50">
+                                <td className="px-4 py-2.5 text-xs text-zinc-500 font-mono">{idx + 1}</td>
+                                <td className="px-4 py-2.5 text-xs font-bold text-zinc-900">{p.month === 'first_bill' ? 'เงินประกัน/แรกเข้า' : p.month}</td>
+                                <td className="px-4 py-2.5 text-xs font-black text-brand-orange-600">{p.roomNumber}</td>
+                                <td className="px-4 py-2.5 text-xs font-medium text-zinc-700">{p.tenantName || '—'}</td>
+                                <td className="px-4 py-2.5 text-xs font-black text-zinc-900 text-right">{p.amount?.toLocaleString()} <span className="text-[10px] font-bold text-zinc-400">฿</span></td>
+                                <td className="px-4 py-2.5 text-xs text-center font-black">
+                                    <span className={normalizeStatus(p.status) === 'จ่ายแล้ว' ? 'text-emerald-600' : 'text-red-500'}>
+                                        {normalizeStatus(p.status)}
+                                    </span>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+
+                <div className="grid grid-cols-2 gap-24 mt-20 px-12">
+                    <div className="text-center">
+                        <div className="border-b border-zinc-300 h-12 mb-3"></div>
+                        <p className="text-[11px] text-zinc-600 font-bold uppercase tracking-wider">ลงชื่อ ผู้จัดทำรายงาน</p>
+                        <p className="text-[10px] text-zinc-400 mt-1 font-medium italic">( เจ้าหน้าที่ดูแลระบบ / แอดมิน )</p>
+                    </div>
+                    <div className="text-center">
+                        <div className="border-b border-zinc-300 h-12 mb-3"></div>
+                        <p className="text-[11px] text-zinc-600 font-bold uppercase tracking-wider">ลงชื่อ ผู้จัดการ / เจ้าของอาคาร</p>
+                        <p className="text-[10px] text-zinc-400 mt-1 font-medium italic">( .................................................. )</p>
+                    </div>
+                </div>
+
+                <div className="fixed bottom-0 left-0 right-0 text-center pb-6 border-t border-zinc-50 pt-4 px-10 flex justify-between items-center text-zinc-300">
+                    <p className="text-[8px] font-bold tracking-widest uppercase">GrowApart Management System • Cloud Solution</p>
+                    <p className="text-[8px] font-medium tracking-wide">หน้าที่ 1 / 1</p>
+                </div>
+            </div>
+
+            {/* Print Modal */}
+            {showPrintModal && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowPrintModal(false)} />
+                    <div className="relative bg-zinc-950 border border-white/10 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between mb-5">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-brand-orange-500/10 border border-brand-orange-500/20 flex items-center justify-center">
+                                    <Printer className="w-5 h-5 text-brand-orange-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-white">พิมพ์รายงาน / บันทึก PDF</h3>
+                                    <p className="text-[10px] text-zinc-500">{currentApt?.name || 'อาคาร'}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowPrintModal(false)} className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-400 flex items-center justify-center">
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+
+                        {/* Print Mode Selector */}
+                        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2">ช่วงเวลา</p>
+                        <div className="grid grid-cols-3 gap-1.5 bg-zinc-900 border border-white/5 rounded-xl p-1 mb-4">
+                            {[
+                                { key: 'month', label: 'รายเดือน' },
+                                { key: 'year',  label: 'รายปี' },
+                                { key: 'all',   label: 'ทั้งหมด' },
+                            ].map(opt => (
+                                <button
+                                    key={opt.key}
+                                    onClick={() => setPrintMode(opt.key)}
+                                    className={`py-2 rounded-lg text-[11px] font-bold transition-all ${printMode === opt.key ? 'bg-brand-orange-500 text-white shadow' : 'text-zinc-400 hover:text-white'}`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Year / Month Dropdowns */}
+                        {printMode !== 'all' && (
+                            <div className="flex gap-2 mb-4">
+                                <div className="flex-1">
+                                    <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-1.5">ปี</p>
+                                    <select
+                                        value={printYear}
+                                        onChange={e => setPrintYear(e.target.value)}
+                                        className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-brand-orange-500/50 transition-all"
+                                    >
+                                        {availableYears.length > 0
+                                            ? availableYears.map(y => <option key={y} value={y}>{parseInt(y) + 543}</option>)
+                                            : <option value={printYear}>{parseInt(printYear) + 543}</option>
+                                        }
+                                    </select>
+                                </div>
+                                {printMode === 'month' && (
+                                    <div className="flex-1">
+                                        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-1.5">เดือน</p>
+                                        <select
+                                            value={printMonth}
+                                            onChange={e => setPrintMonth(e.target.value)}
+                                            className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-brand-orange-500/50 transition-all"
+                                        >
+                                            {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+                                                <option key={m} value={m}>{thMonthsFull[i]}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Preview Summary */}
+                        <div className="bg-zinc-900/50 border border-white/5 rounded-xl px-4 py-3 mb-5 flex items-center justify-between">
+                            <div>
+                                <p className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider mb-0.5">ข้อมูลที่จะพิมพ์</p>
+                                <p className="text-xs font-bold text-white">{printTitle}</p>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-2xl font-black text-brand-orange-400">{printData.length}</span>
+                                <p className="text-[10px] text-zinc-500">รายการ</p>
+                            </div>
+                        </div>
+
+                        {/* Totals row */}
+                        <div className="grid grid-cols-3 gap-2 mb-5 text-center">
+                            {[
+                                { label: 'ยอดรวม', val: printTotal, color: 'text-white' },
+                                { label: 'จ่ายแล้ว', val: printPaid, color: 'text-emerald-400' },
+                                { label: 'ยังค้าง', val: printUnpaid, color: 'text-red-400' },
+                            ].map((s, i) => (
+                                <div key={i} className="bg-zinc-900/50 border border-white/5 rounded-xl py-2 px-1">
+                                    <p className="text-[9px] text-zinc-500 uppercase font-semibold mb-0.5">{s.label}</p>
+                                    <p className={`text-xs font-black ${s.color}`}>{s.val.toLocaleString()} ฿</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                            <button onClick={() => setShowPrintModal(false)} className="flex-1 py-2.5 text-xs font-bold text-zinc-500 hover:text-white rounded-xl bg-zinc-900 border border-white/5 transition-all">
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={handlePrintPDF}
+                                disabled={printData.length === 0}
+                                className="flex-1 py-2.5 text-xs font-bold text-white rounded-xl bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-brand-orange-500/20 flex items-center justify-center gap-2"
+                            >
+                                <Printer className="w-3.5 h-3.5" /> พิมพ์ / บันทึก PDF
+                            </button>
                         </div>
                     </div>
                 </div>

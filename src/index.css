@@ -43,3 +43,65 @@
     /* brand-orange-500 */
   }
 }
+
+/* ── Print / PDF styles ─────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4;
+    margin: 0; 
+  }
+
+  /* Reset layout for print */
+  html, body, #root {
+    background: white !important;
+    color: black !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Robust hiding mechanism */
+  body * {
+    visibility: hidden;
+  }
+
+  .print-area, .print-area * {
+    visibility: visible !important;
+  }
+
+  .print-area {
+    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 210mm; 
+    min-height: 297mm;
+    background: white !important;
+    z-index: 9999999;
+    padding: 15mm 20mm;
+    box-sizing: border-box;
+  }
+
+  /* Professional Table Rendering */
+  .print-area table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  
+  .print-area td, .print-area th {
+    padding: 8px 12px !important;
+    border-bottom: 1px solid #f0f0f0 !important;
+  }
+
+  /* Hide all common UI components */
+  nav, header, aside, footer, .print-hidden, button, .modal-backdrop {
+    display: none !important;
+    opacity: 0 !important;
+  }
+
+  /* Ensure colors are kept */
+  .text-brand-orange-500, .text-brand-orange-600 { color: #F39C12 !important; }
+  .text-emerald-600 { color: #059669 !important; }
+  .text-red-600 { color: #DC2626 !important; }
+}
