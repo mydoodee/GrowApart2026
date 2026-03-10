@@ -58,7 +58,6 @@ const StatusPill = ({ status }) => {
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 export default function TenantManagement({ user }) {
-    // eslint-disable-next-line no-unused-vars
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { toast, showToast, hideToast } = useToast();
@@ -75,12 +74,9 @@ export default function TenantManagement({ user }) {
     const [search, setSearch] = useState('');
     const [selectedTenant, setSelectedTenant] = useState(null);
     const [viewTab, setViewTab] = useState(localStorage.getItem('tenantViewTab') || 'datagrid');
-    const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
-    const [historyView, setHistoryView] = useState('table'); // eslint-disable-next-line no-unused-vars
-    const [payments, setPayments] = useState([]);
     const [allAptPayments, setAllAptPayments] = useState([]);
-    const [paymentsLoading, setPaymentsLoading] = useState(false);
-    const [allPaymentsLoading, setAllPaymentsLoading] = useState(false); // eslint-disable-next-line no-unused-vars
+
+
 
     // Filtering states
     const [filterYear, setFilterYear] = useState('all');
@@ -112,13 +108,11 @@ export default function TenantManagement({ user }) {
     const [qrCopied, setQrCopied] = useState(false);
     const qrRef = useRef(null);
 
-    // First bill state
-    // eslint-disable-next-line no-unused-vars
-    const [showFirstBill, setShowFirstBill] = useState(false);
-    // eslint-disable-next-line no-unused-vars
-    const [firstBillSaving, setFirstBillSaving] = useState(false);
-    // eslint-disable-next-line no-unused-vars
-    const firstBillRef = useRef(null);
+    // vehicle edit state
+    const [editVehicleMode, setEditVehicleMode] = useState(false);
+    const [editCarPlate, setEditCarPlate] = useState('');
+    const [editMotoPlate, setEditMotoPlate] = useState('');
+    const [vehicleSaving, setVehicleSaving] = useState(false);
 
     // ── load ──────────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -152,12 +146,19 @@ export default function TenantManagement({ user }) {
                 setRooms(merged);
             });
 
-            const tSnap = await getDocs(query(
+            const tQ = query(
                 collection(db, 'users'),
                 where(`apartmentRoles.${aptId}.role`, '==', 'tenant')
-            ));
-            setTenants(tSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            );
+            const unsubTenants = onSnapshot(tQ, snap => {
+                setTenants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            });
+
             setLoading(false);
+            return () => {
+                if (unsub) unsub();
+                unsubTenants();
+            };
         };
 
         load().catch(err => { console.error(err); setLoading(false); });
@@ -177,6 +178,11 @@ export default function TenantManagement({ user }) {
 
             setSelectedTenant(prev => {
                 if (prev?.id === tenant.id) return prev;
+                // Reset edit states
+                setEditVehicleMode(false);
+                setEditCarPlate(tenant.vehicles?.car?.[0] || '');
+                setEditMotoPlate(tenant.vehicles?.motorcycle?.[0] || '');
+
                 return { ...tenant, roomNumber: rn, roomObj };
             });
 
@@ -191,35 +197,7 @@ export default function TenantManagement({ user }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loading, tenants, rooms, searchParams, activeAptId]);
 
-    // ── payments for selected tenant ─────────────────────────────────────────
-    useEffect(() => {
-        if (!selectedTenant?.id || !activeAptId) {
 
-            // setPayments([]);
-            // setPaymentsLoading(false);
-            return;
-        }
-
-        setPaymentsLoading(true);
-        const q = query(
-            collection(db, 'payments'),
-            where('tenantId', '==', selectedTenant.id),
-            where('apartmentId', '==', activeAptId)
-        );
-
-        const unsubscribe = onSnapshot(q, (snap) => {
-            const sorted = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => (b.month || '').localeCompare(a.month || ''));
-            setPayments(sorted);
-            setPaymentsLoading(false);
-        }, (err) => {
-            console.error("Error listening to payments:", err);
-            setPaymentsLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [selectedTenant?.id, activeAptId]);
 
     // ── all apartment payments ───────────────────────────────────────────────
     useEffect(() => {
@@ -229,7 +207,7 @@ export default function TenantManagement({ user }) {
             return;
         }
 
-        setAllPaymentsLoading(true);
+
         const q = query(
             collection(db, 'payments'),
             where('apartmentId', '==', activeAptId)
@@ -240,10 +218,8 @@ export default function TenantManagement({ user }) {
                 .map(d => ({ id: d.id, ...d.data() }))
                 .sort((a, b) => (b.month || '').localeCompare(a.month || '') || (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
             setAllAptPayments(sorted);
-            setAllPaymentsLoading(false);
         }, (err) => {
             console.error("Error listening to all payments:", err);
-            setAllPaymentsLoading(false);
         });
 
         return () => unsubscribe();
@@ -342,54 +318,39 @@ export default function TenantManagement({ user }) {
         setMoveOutSaving(false);
     };
 
-    const currentApt = apartments.find(a => a.id === activeAptId);
-    // eslint-disable-next-line no-unused-vars
-    const bankDetails = currentApt?.bankDetails || {};
-    const utilityRates = currentApt?.utilityRates || {};
-
-    const getFirstBillItems = () => {
-        if (!selectedTenant?.roomObj) return [];
-        const room = selectedTenant.roomObj;
-        const items = [];
-        items.push({ label: 'ค่าเช่าห้อง (เดือนแรก)', amount: room.price || utilityRates.baseRent || 0 });
-        if (room.deposit) items.push({ label: 'ค่ามัดจำ', amount: room.deposit });
-        if (room.fixedExpenses) {
-            room.fixedExpenses.filter(e => e.active).forEach(e => {
-                items.push({ label: e.name, amount: e.amount || 0 });
-            });
-        }
-        return items;
-    };
-    const getFirstBillTotal = () => getFirstBillItems().reduce((sum, i) => sum + i.amount, 0);
-
-    // eslint-disable-next-line no-unused-vars
-    const handleConfirmFirstPayment = async () => {
-        if (!selectedTenant || !activeAptId) return;
-        setFirstBillSaving(true);
+    const handleSaveVehicles = async () => {
+        if (!selectedTenant) return;
+        setVehicleSaving(true);
         try {
-            const now = new Date();
-            const monthStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-            await addDoc(collection(db, 'payments'), {
-                tenantId: selectedTenant.id, tenantName: selectedTenant.name || selectedTenant.displayName || '', apartmentId: activeAptId, roomNumber: selectedTenant.roomNumber,
-                month: monthStr, type: 'first_bill', amount: getFirstBillTotal(), items: getFirstBillItems(), status: 'paid', paidAt: Timestamp.now(), createdAt: Timestamp.now()
-            });
+            const userRef = doc(db, 'users', selectedTenant.id);
+            const vehicles = {};
+            if (editCarPlate.trim()) vehicles.car = [editCarPlate.trim()];
+            if (editMotoPlate.trim()) vehicles.motorcycle = [editMotoPlate.trim()];
 
-            if (selectedTenant.roomObj?.id) {
-                await updateDoc(doc(db, 'rooms', selectedTenant.roomObj.id), { firstBillPaid: true, firstBillPaidAt: Timestamp.now() });
-            }
-            showToast('บันทึกการชำระเรียบร้อย', 'success');
-            setShowFirstBill(false);
-            setPaymentsLoading(true);
-        } catch (e) { console.error(e); showToast('บันทึกการชำระล้มเหลว', 'error'); }
-        setFirstBillSaving(false);
+            const payload = { vehicles };
+
+            await updateDoc(userRef, payload);
+
+            // update local state
+            const updatedTenant = { ...selectedTenant, vehicles };
+            setSelectedTenant(updatedTenant);
+            
+            // update in tenants array
+            setTenants(prev => prev.map(t => t.id === updatedTenant.id ? { ...t, vehicles } : t));
+
+            setEditVehicleMode(false);
+            showToast('บันทึกข้อมูลยานพาหนะแล้ว', 'success');
+        } catch (e) {
+            console.error(e);
+            showToast('บันทึกยานพาหนะล้มเหลว', 'error');
+        }
+        setVehicleSaving(false);
     };
 
-    // ── display calculations ───────────────────────────────────────────────────
-    const tenantMap = {};
-    tenants.forEach(t => {
-        const rn = t.apartmentRoles?.[activeAptId]?.roomNumber;
-        if (rn) tenantMap[rn] = t;
-    });
+    const currentApt = apartments.find(a => a.id === activeAptId);
+
+
+
 
     const floorsList = floors.map(f => f.id).sort((a, b) => a - b);
     const sq = search.trim().toLowerCase();
@@ -401,22 +362,14 @@ export default function TenantManagement({ user }) {
         statusMap[t.id] = normalizeStatus(payment?.status);
     });
 
-    // Filtered rooms currently occupied by tenants
-    const displayRooms = rooms.filter(r => {
-        const t = tenantMap[r.roomNumber];
-        if (!t) return false;
-        if (filterFloor !== 'all' && r.floor !== parseInt(filterFloor)) return false;
-        if (filterStatus !== 'all' && statusMap[t.id] !== filterStatus) return false;
 
-        if (!sq) return true;
-        const name = (t.name || t.displayName || t.roomNumber || '').toLowerCase();
-        return name.includes(sq) || (t.phone || '').includes(sq) || (t.email || '').toLowerCase().includes(sq) || r.roomNumber?.toLowerCase().includes(sq);
-    });
+    // Simplified filtering logic directly in JSX to reduce redundancy
 
     const paidCount = tenants.filter(t => statusMap[t.id] === 'จ่ายแล้ว').length;
     const overdueCount = tenants.filter(t => statusMap[t.id] === 'ค้างชำระ').length;
     const pendingCount = tenants.filter(t => statusMap[t.id] === 'รอชำระ').length;
     const occupiedCount = tenants.length;
+    const vacantRooms = rooms.filter(r => r.status === 'ว่าง');
 
     // eslint-disable-next-line no-unused-vars
     const totalRooms = rooms.length;
@@ -524,6 +477,7 @@ export default function TenantManagement({ user }) {
                 </div>
 
                 {/* ── Payment progress ─────────────────────────── */}
+                {/* ── Payment progress ─────────────────────────── */}
                 <div className="mb-4 bg-brand-card/40 border border-white/8 rounded-2xl px-5 py-3 flex items-center gap-4">
                     <span className="text-[10px] text-brand-gray-500 uppercase tracking-widest font-bold shrink-0">การชำระเงินเดือนนี้</span>
                     <div className="flex-1 h-2 bg-zinc-800/50 rounded-full overflow-hidden">
@@ -583,103 +537,166 @@ export default function TenantManagement({ user }) {
                     )}
                 </div>
 
-
                 <div className="flex gap-4 items-start print:hidden">
                     <div className={`transition-all duration-300 w-full min-w-0 ${selectedTenant ? 'lg:w-[58%]' : ''}`}>
-                        {displayRooms.length === 0 && viewTab !== 'history' ? (
-                            <div className="text-center py-20 bg-brand-card/40 border border-white/8 rounded-3xl">
-                                <Users className="w-10 h-10 text-brand-gray-700 mx-auto mb-3 opacity-20" />
-                                <p className="text-brand-gray-500 font-bold text-sm">ไม่พบข้อมูลผู้เช่า</p>
-                            </div>
-                        ) : viewTab === 'datagrid' ? (
-                            <div className="bg-brand-card/40 border border-white/8 rounded-3xl overflow-hidden shadow-2xl">
-                                <div className="overflow-x-auto custom-scrollbar">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead>
-                                            <tr className="bg-white/5">
-                                                <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ผู้เช่า</th>
-                                                <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ห้อง</th>
-                                                <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest hidden md:table-cell">การติดต่อ</th>
-                                                <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest hidden sm:table-cell">สถานะชำระ</th>
-                                                <th className="px-6 py-4 w-12"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-white/[0.04]">
-                                            {displayRooms.map(room => {
-                                                const tenant = tenantMap[room.roomNumber];
-                                                const isSelected = selectedTenant?.id === tenant.id;
-                                                const name = tenant.name || tenant.displayName || '—';
-                                                return (
-                                                    <tr
-                                                        key={tenant.id} onClick={() => setSelectedTenant(isSelected ? null : { ...tenant, roomNumber: room.roomNumber, roomObj: room })}
-                                                        className={`cursor-pointer transition-colors group ${isSelected ? 'bg-brand-orange-500/5' : 'hover:bg-white/[0.02]'}`}
-                                                    >
-                                                        <td className="px-6 py-4">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-black text-white shrink-0 shadow-lg ${getAvatarBg(name)}`}>
-                                                                    {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-xl" /> : name.charAt(0)}
-                                                                </div>
-                                                                <span className="text-sm font-bold text-zinc-200 truncate">{name}</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-[13px] font-black text-brand-orange-500">{room.roomNumber}</span>
-                                                                <span className="text-[10px] font-bold text-brand-gray-500 px-2 py-0.5 bg-white/5 rounded-lg border border-white/5">ชั้น {room.floor}</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-4 hidden md:table-cell">
-                                                            <p className="text-xs font-bold text-brand-gray-400">{tenant.phone || '—'}</p>
-                                                        </td>
-                                                        <td className="px-6 py-4 hidden sm:table-cell">
-                                                            <StatusPill status={isSelected ? 'paid' : 'pending'} />
-                                                        </td>
-                                                        <td className="px-6 py-4 text-right">
-                                                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ml-auto transition-all shadow-lg ${isSelected ? 'bg-brand-orange-500 text-brand-bg' : 'bg-white/5 text-brand-gray-500 group-hover:bg-white/10 group-hover:text-white'}`}>
-                                                                <ChevronRight className="w-4 h-4" />
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        ) : viewTab === 'cards' ? (
-                            <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                                {displayRooms.length === 0 ? (
-                                    <div className="col-span-full text-center py-20 bg-brand-card/40 border border-white/8 rounded-3xl">
+                        {(() => {
+                            const filteredRooms = rooms.filter(room => {
+                                const tenant = tenants.find(t => t.id === room.tenantId);
+                                if (!tenant) return false;
+                                const matchesSearch = !search ||
+                                    room.roomNumber?.toLowerCase().includes(search.toLowerCase()) ||
+                                    room.tenantName?.toLowerCase().includes(search.toLowerCase()) ||
+                                    tenant.phone?.includes(search) ||
+                                    tenant.email?.toLowerCase().includes(search.toLowerCase());
+                                const matchesFloor = filterFloor === 'all' || room.floor?.toString() === filterFloor;
+                                const matchesStatus = filterStatus === 'all' || statusMap[tenant.id] === filterStatus;
+                                return matchesSearch && matchesFloor && matchesStatus;
+                            });
+
+                            if (viewTab === 'history') return null; // History handled below
+                            if (filteredRooms.length === 0) {
+                                return (
+                                    <div className="text-center py-20 bg-brand-card/40 border border-white/8 rounded-3xl">
                                         <Users className="w-10 h-10 text-brand-gray-700 mx-auto mb-3 opacity-20" />
                                         <p className="text-brand-gray-500 font-bold text-sm">ไม่พบข้อมูลผู้เช่า</p>
                                     </div>
-                                ) : (
-                                    displayRooms.map(room => {
-                                        const tenant = tenantMap[room.roomNumber];
-                                        const isSelected = selectedTenant?.id === tenant.id;
-                                        const name = tenant.name || tenant.displayName || '—';
-                                        return (
-                                            <button
-                                                key={tenant.id} onClick={() => setSelectedTenant(isSelected ? null : { ...tenant, roomNumber: room.roomNumber, roomObj: room })}
-                                                className={`p-4 bg-brand-card/40 border border-white/8 rounded-2xl transition-all text-left group relative hover:border-brand-orange-500/30 hover:shadow-xl ${isSelected ? 'ring-2 ring-brand-orange-500 bg-brand-orange-500/5 shadow-brand-orange-500/10' : ''}`}
-                                            >
-                                                <div className="flex justify-between items-start mb-4">
-                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-black text-white shadow-lg shrink-0 ${getAvatarBg(name)}`}>
-                                                        {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-xl" /> : name.charAt(0)}
+                                );
+                            }
+
+                            if (viewTab === 'datagrid') {
+                                return (
+                                    <div className="bg-brand-card/40 border border-white/8 rounded-3xl overflow-hidden shadow-2xl">
+                                        <div className="overflow-x-auto custom-scrollbar">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-white/5">
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ผู้เช่า</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ห้อง</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest hidden md:table-cell">การติดต่อ</th>
+                                                        <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest hidden sm:table-cell">สถานะชำระ</th>
+                                                        <th className="px-6 py-4 w-12"></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-white/[0.04]">
+                                                    {filteredRooms.map(room => {
+                                                        const tenant = tenants.find(t => t.id === room.tenantId);
+                                                        const isSelected = selectedTenant?.id === tenant.id;
+                                                        const name = tenant.name || tenant.displayName || room.tenantName || '—';
+                                                        return (
+                                                            <tr
+                                                                key={room.id} onClick={() => {
+                                                                    if (isSelected) {
+                                                                        setSelectedTenant(null);
+                                                                    } else {
+                                                                        setSelectedTenant({ ...tenant, roomNumber: room.roomNumber, roomObj: room });
+                                                                        setEditVehicleMode(false);
+                                                                        setEditCarPlate(tenant.vehicles?.car?.[0] || '');
+                                                                        setEditMotoPlate(tenant.vehicles?.motorcycle?.[0] || '');
+                                                                    }
+                                                                }}
+                                                                className={`cursor-pointer transition-colors group ${isSelected ? 'bg-brand-orange-500/5' : 'hover:bg-white/[0.02]'}`}
+                                                            >
+                                                                <td className="px-6 py-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-black text-white shrink-0 shadow-lg ${getAvatarBg(name)}`}>
+                                                                            {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-xl" /> : name.charAt(0)}
+                                                                        </div>
+                                                                        <span className="text-sm font-bold text-zinc-200 truncate">{name}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-4">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-[13px] font-black text-brand-orange-500">{room.roomNumber}</span>
+                                                                        <span className="text-[10px] font-bold text-brand-gray-500 px-2 py-0.5 bg-white/5 rounded-lg border border-white/5">ชั้น {room.floor}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-4 hidden md:table-cell">
+                                                                    <div className="flex flex-col gap-0.5">
+                                                                        <p className="text-xs font-bold text-brand-gray-400 flex items-center gap-1.5"><KeyRound className="w-3 h-3 text-brand-gray-500" /> {tenant.phone || '—'}</p>
+                                                                        <p className="text-[10px] font-medium text-brand-gray-500 flex items-center gap-1.5"><Clock className="w-3 h-3 text-brand-gray-600" /> {tenant.email || '—'}</p>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-4 hidden sm:table-cell">
+                                                                    <StatusPill status={statusMap[tenant.id]} />
+                                                                </td>
+                                                                <td className="px-6 py-4 text-right">
+                                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ml-auto transition-all shadow-lg ${isSelected ? 'bg-brand-orange-500 text-brand-bg' : 'bg-white/5 text-brand-gray-500 group-hover:bg-white/10 group-hover:text-white'}`}>
+                                                                        <ChevronRight className="w-4 h-4" />
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            if (viewTab === 'cards') {
+                                return (
+                                    <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                                        {filteredRooms.map(room => {
+                                            const tenant = tenants.find(t => t.id === room.tenantId);
+                                            const isSelected = selectedTenant?.id === tenant.id;
+                                            const name = tenant.name || tenant.displayName || room.tenantName || '—';
+                                            return (
+                                                <div
+                                                    key={room.id}
+                                                    onClick={() => {
+                                                        if (isSelected) {
+                                                            setSelectedTenant(null);
+                                                        } else {
+                                                            setSelectedTenant({ ...tenant, roomNumber: room.roomNumber, roomObj: room });
+                                                            setEditVehicleMode(false);
+                                                            setEditCarPlate(tenant.vehicles?.car?.[0] || '');
+                                                            setEditMotoPlate(tenant.vehicles?.motorcycle?.[0] || '');
+                                                        }
+                                                    }}
+                                                    className={`bg-brand-card/40 border rounded-3xl p-5 cursor-pointer transition-all duration-300 group ${isSelected ? 'border-brand-orange-500 shadow-xl shadow-brand-orange-500/10' : 'border-white/8 hover:border-white/20 hover:bg-white/[0.04]'}`}
+                                                >
+                                                    <div className="flex items-start justify-between mb-4">
+                                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-black text-white shrink-0 shadow-lg ${getAvatarBg(name)}`}>
+                                                            {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-2xl" /> : name.charAt(0)}
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1 block">ห้อง</span>
+                                                            <span className="text-lg font-black text-brand-orange-500">{room.roomNumber}</span>
+                                                        </div>
                                                     </div>
-                                                    <span className="text-[13px] font-black text-brand-orange-500 leading-none">{room.roomNumber}</span>
+
+                                                    <div className="space-y-1 mb-4">
+                                                        <h3 className="text-sm font-black text-white truncate">{name}</h3>
+                                                        <div className="flex items-center justify-between mt-1">
+                                                            <p className="text-[10px] text-brand-gray-500 flex items-center gap-1.5"><KeyRound className="w-3 h-3" /> {tenant.phone || '—'}</p>
+                                                            <span className="text-[9px] font-bold text-brand-gray-500 px-1.5 py-0.5 bg-white/5 rounded border border-white/5">ชั้น {room.floor}</span>
+                                                        </div>
+
+                                                        {(tenant.vehicles?.car?.[0] || tenant.vehicles?.motorcycle?.[0]) && (
+                                                            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-white/5">
+                                                                {tenant.vehicles?.car?.[0] && <span className="text-[9px] font-bold text-blue-400 bg-blue-500/5 px-1.5 py-0.5 rounded border border-blue-500/10">🚗 {tenant.vehicles.car[0]}</span>}
+                                                                {tenant.vehicles?.motorcycle?.[0] && <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/5 px-1.5 py-0.5 rounded border border-emerald-500/10">🏍️ {tenant.vehicles.motorcycle[0]}</span>}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                                                        <StatusPill status={statusMap[tenant.id]} />
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${isSelected ? 'bg-brand-orange-500 text-brand-bg' : 'bg-white/5 text-zinc-500 group-hover:text-white'}`}>
+                                                            <ChevronRight className="w-3.5 h-3.5" />
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <p className="text-sm font-bold text-white truncate mb-2">{name}</p>
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-[10px] font-bold text-brand-gray-500 px-2 py-0.5 bg-white/5 rounded-lg border border-white/5 uppercase">ชั้น {room.floor}</span>
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                                </div>
-                                            </button>
-                                        );
-                                    })
-                                )}
-                            </div>
-                        ) : (
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
+
+                        {viewTab === 'history' && (
                             <div className="bg-brand-card/40 border border-white/8 rounded-3xl overflow-hidden min-h-[500px] flex flex-col shadow-2xl">
                                 {sq || filterYear !== 'all' || filterMonth !== 'all' ? (
                                     <div className="px-6 py-3 bg-brand-orange-500/10 border-b border-white/8 flex flex-wrap items-center justify-between gap-y-2">
@@ -733,7 +750,7 @@ export default function TenantManagement({ user }) {
                                             <tr className="bg-white/5 sticky top-0 z-10 backdrop-blur-xl border-b border-white/8 print:bg-transparent print:border-black print:static print:text-black">
                                                 <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest print:text-black print:font-bold">เดือน/ปี</th>
                                                 <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest print:text-black print:font-bold">ห้อง</th>
-                                                <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest hidden md:table-cell print:table-cell print:text-black print:font-bold">ผู้เช่า</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest hidden sm:table-cell print:table-cell print:text-black print:font-bold">ผู้เช่า</th>
                                                 <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest text-right print:text-black print:font-bold">จำนวนเงิน</th>
                                                 <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest text-center print:hidden">หลักฐาน</th>
                                                 <th className="px-6 py-4 text-[10px] font-black text-brand-gray-500 uppercase tracking-widest text-center print:text-black print:font-bold">สถานะ</th>
@@ -760,8 +777,15 @@ export default function TenantManagement({ user }) {
                                                     <td className="px-6 py-4">
                                                         <span className="text-[13px] font-black text-brand-orange-500 print:text-black">{p.roomNumber}</span>
                                                     </td>
-                                                    <td className="px-6 py-4 hidden md:table-cell print:table-cell">
-                                                        <span className="text-xs font-bold text-brand-gray-400 truncate max-w-[140px] inline-block print:text-black">{p.tenantName || '—'}</span>
+                                                    <td className="px-6 py-4 hidden sm:table-cell print:table-cell">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black text-white shrink-0 shadow-lg print:hidden ${getAvatarBg(p.tenantName || '')}`}>
+                                                                {tenants.find(t => t.id === p.tenantId)?.photoURL ? (
+                                                                    <img src={tenants.find(t => t.id === p.tenantId).photoURL} className="w-full h-full object-cover rounded-lg" alt="" />
+                                                                ) : (p.tenantName || '—').charAt(0)}
+                                                            </div>
+                                                            <span className="text-xs font-bold text-brand-gray-400 truncate max-w-[120px] inline-block print:text-black">{p.tenantName || '—'}</span>
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         <span className="text-sm font-black text-brand-gray-200 print:text-black">{p.amount?.toLocaleString()} <span className="text-[10px] font-bold text-brand-gray-600 ml-0.5">฿</span></span>
@@ -859,6 +883,94 @@ export default function TenantManagement({ user }) {
                                                     </div>
                                                 </div>
                                             ))}
+                                            
+                                            {/* Vehicle Information */}
+                                            <div className="pt-3 mt-3 border-t border-white/5 space-y-3">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">ยานพาหนะ</p>
+                                                    <button 
+                                                        onClick={() => {
+                                                            if (editVehicleMode) {
+                                                                handleSaveVehicles();
+                                                            } else {
+                                                                setEditVehicleMode(true);
+                                                            }
+                                                        }}
+                                                        disabled={vehicleSaving}
+                                                        className={`text-[10px] font-bold px-2 py-1 rounded transition-colors ${editVehicleMode ? 'bg-brand-orange-500 text-white' : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'} disabled:opacity-50`}
+                                                    >
+                                                        {vehicleSaving ? 'กำลังบันทึก...' : editVehicleMode ? 'บันทึก' : 'แก้ไข'}
+                                                    </button>
+                                                </div>
+                                                
+                                                {editVehicleMode ? (
+                                                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-zinc-500 flex items-center gap-1.5 mb-1"><span className="text-xs">🚗</span> ทะเบียนรถยนต์</label>
+                                                            <input 
+                                                                type="text" 
+                                                                value={editCarPlate}
+                                                                onChange={e => setEditCarPlate(e.target.value)}
+                                                                placeholder="เช่น กก 1234 กทม."
+                                                                className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-brand-orange-500 outline-none placeholder:text-zinc-600"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-zinc-500 flex items-center gap-1.5 mb-1"><span className="text-xs">🏍️</span> ทะเบียนรถจักรยานยนต์</label>
+                                                            <input 
+                                                                type="text" 
+                                                                value={editMotoPlate}
+                                                                onChange={e => setEditMotoPlate(e.target.value)}
+                                                                placeholder="เช่น 1กข 5678 กทม."
+                                                                className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-brand-orange-500 outline-none placeholder:text-zinc-600"
+                                                            />
+                                                        </div>
+                                                        <div className="flex justify-end pt-1">
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setEditVehicleMode(false);
+                                                                    setEditCarPlate(selectedTenant.vehicles?.car?.[0] || '');
+                                                                    setEditMotoPlate(selectedTenant.vehicles?.motorcycle?.[0] || '');
+                                                                }}
+                                                                className="text-[10px] font-bold text-zinc-500 hover:text-white transition-colors"
+                                                            >
+                                                                ยกเลิก
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        {((selectedTenant.vehicles?.car && selectedTenant.vehicles?.car?.length > 0) || (selectedTenant.vehicles?.motorcycle && selectedTenant.vehicles?.motorcycle?.length > 0)) ? (
+                                                            <>
+                                                                {selectedTenant.vehicles?.car && selectedTenant.vehicles?.car?.map((plate, idx) => (
+                                                                    <div key={`car-${idx}`} className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2 text-zinc-500">
+                                                                            <span className="w-3.5 h-3.5 flex items-center justify-center text-xs">🚗</span>
+                                                                            <span className="text-[10px] font-semibold uppercase tracking-wider">รถยนต์ {idx + 1}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-xs font-bold text-white bg-white/10 px-2 py-0.5 rounded border border-white/10">{plate}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                                {selectedTenant.vehicles?.motorcycle && selectedTenant.vehicles?.motorcycle?.map((plate, idx) => (
+                                                                    <div key={`moto-${idx}`} className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2 text-zinc-500">
+                                                                            <span className="w-3.5 h-3.5 flex items-center justify-center text-xs">🏍️</span>
+                                                                            <span className="text-[10px] font-semibold uppercase tracking-wider">รถจักรยานยนต์ {idx + 1}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-xs font-bold text-white bg-white/10 px-2 py-0.5 rounded border border-white/10">{plate}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </>
+                                                        ) : (
+                                                            <p className="text-xs text-zinc-600 italic font-medium">ยังไม่มีข้อมูลยานพาหนะ</p>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
 
 
@@ -870,7 +982,6 @@ export default function TenantManagement({ user }) {
                                                     <ArrowRightLeft className="w-3.5 h-3.5" /> ย้ายห้อง
                                                 </button>
                                                 <button onClick={() => setShowMoveOutConfirm(true)} className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] font-bold text-red-400 hover:bg-red-500/20 transition-all">
-                                                    ```
                                                     <LogOut className="w-3.5 h-3.5" /> แจ้งย้ายออก
                                                 </button>
                                             </div>

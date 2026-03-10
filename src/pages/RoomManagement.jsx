@@ -63,7 +63,8 @@ export default function RoomManagement({ user }) {
     const [viewTab, setViewTab] = useState(localStorage.getItem('roomViewTab') || 'datagrid');
 
     const [showAmenities, setShowAmenities] = useState(false);
-    const [showExpenses, setShowExpenses] = useState(false);
+
+
 
     const handleTabChange = (tab) => {
         setViewTab(tab);
@@ -98,6 +99,7 @@ export default function RoomManagement({ user }) {
 
         let unsubscribe;
         const loadData = async () => {
+            await Promise.resolve();
             try {
                 const apps = await getUserApartments(db, user);
                 setApartments(apps);
@@ -176,8 +178,10 @@ export default function RoomManagement({ user }) {
             const tId = searchParams.get('tenantId');
             const target = rooms.find(r => (roomNum && r.roomNumber === roomNum) || (tId && r.tenantId === tId));
             if (target) {
-                setSelectedRoom(prev => (prev?.roomNumber === target.roomNumber && prev?.apartmentId === target.apartmentId) ? prev : target);
-                if (filterFloor !== 'all' && target.floor !== parseInt(filterFloor)) setFilterFloor('all');
+                setTimeout(() => setSelectedRoom(prev => (prev?.roomNumber === target.roomNumber && prev?.apartmentId === target.apartmentId) ? prev : target), 0);
+                if (filterFloor !== 'all' && target.floor !== parseInt(filterFloor)) {
+                    setTimeout(() => setFilterFloor('all'), 0);
+                }
                 const newParams = new URLSearchParams(searchParams);
                 newParams.delete('room'); newParams.delete('tenantId');
                 setSearchParams(newParams, { replace: true });
@@ -188,7 +192,7 @@ export default function RoomManagement({ user }) {
     const handleAptSwitch = (id) => { localStorage.setItem('activeApartmentId', id); setActiveAptId(id); setSelectedRoom(null); showToast('สลับตึกเรียบร้อย'); };
     const handleRoomClick = (room) => {
         if (selectedRoom?.roomNumber === room.roomNumber && selectedRoom?.apartmentId === room.apartmentId) setSelectedRoom(null);
-        else { setSelectedRoom({ ...room }); setShowAmenities(false); setShowExpenses(false); }
+        else { setSelectedRoom({ ...room }); setShowAmenities(false); }
     };
 
     const handleSaveRoom = async () => {

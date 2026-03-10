@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, getDoc, getDocs } from 'firebase/firestore';
+
 import { auth, db } from '../firebase';
 import { getUserApartments } from '../utils/apartmentUtils';
 import { Building, Plus, LogOut, Check, ArrowRight } from 'lucide-react';

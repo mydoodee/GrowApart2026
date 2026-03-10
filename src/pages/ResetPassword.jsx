@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { verifyPasswordResetCode, confirmPasswordReset } from 'firebase/auth';
+import { confirmPasswordReset } from 'firebase/auth';
 import { auth } from '../firebase';
 import { Lock, Eye, EyeOff, Loader2, CheckCircle2 } from 'lucide-react';
 
@@ -20,9 +20,9 @@ export default function ResetPassword() {
         const query = new URLSearchParams(location.search);
         const code = query.get('oobCode');
         if (code) {
-            setOobCode(prev => prev !== code ? code : prev);
+            setTimeout(() => setOobCode(prev => prev !== code ? code : prev), 0);
         } else {
-            setError(prev => prev !== 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุ' ? 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุ' : prev);
+            setTimeout(() => setError(prev => prev !== 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุ' ? 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุ' : prev), 0);
         }
     }, [location]);
 

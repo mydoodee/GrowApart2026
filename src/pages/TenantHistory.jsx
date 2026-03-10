@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     collection, doc, getDoc, getDocs, query, where, orderBy
@@ -6,11 +6,14 @@ import {
 import { db } from '../firebase';
 import {
     Search, X, User, Clock, Home, LayoutGrid, CalendarDays, Banknote, Phone, Mail,
-    Printer, History, ChevronRight, ChevronLeft, Building
+    Printer, History, ChevronRight, ChevronLeft, Building, CheckCircle2
 } from 'lucide-react';
 import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import MainLayout from '../components/MainLayout';
+
+const EmbeddedLayout = ({ children }) => <>{children}</>;
+const TenantWrapper = ({ children }) => <div className="min-h-screen bg-brand-bg text-brand-text flex flex-col">{children}</div>;
 import { getUserApartments } from '../utils/apartmentUtils';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -27,7 +30,7 @@ const fmtDate = (ts) => {
 };
 
 // ─── main ─────────────────────────────────────────────────────────────────────
-export default function TenantHistory({ user }) {
+export default function TenantHistory({ user, isEmbedded = false }) {
     const navigate = useNavigate();
     const { toast, showToast, hideToast } = useToast();
 
@@ -38,7 +41,6 @@ export default function TenantHistory({ user }) {
     const [loading, setLoading] = useState(true);
 
     const [filterFloor, setFilterFloor] = useState('all');
-    const [filterYear, setFilterYear] = useState('all');
     const [search, setSearch] = useState('');
     const [selectedRecord, setSelectedRecord] = useState(null);
     const [isTenant, setIsTenant] = useState(false);
@@ -58,6 +60,12 @@ export default function TenantHistory({ user }) {
             const apps = await getUserApartments(db, user);
             setApartments(apps);
 
+            // Fetch current rooms to check for firstBillPaid status
+            const roomsQ = query(collection(db, 'rooms'), where('tenantId', '==', user.uid));
+            const roomsSnap = await getDocs(roomsQ);
+            const currentRooms = roomsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const isAnyFirstBillPaid = currentRooms.some(r => r.firstBillPaid);
+
             if (userData?.role === 'tenant') {
                 // Fetch ALL history for this tenant across any apartment
                 const q = query(
@@ -65,9 +73,41 @@ export default function TenantHistory({ user }) {
                     where('tenantId', '==', user.uid)
                 );
                 const snap = await getDocs(q);
-                const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                data.sort((a, b) => (b.movedOutAt?.toMillis?.() || 0) - (a.movedOutAt?.toMillis?.() || 0));
-                setHistory(data);
+                let historyData = snap.docs.map(d => ({ id: d.id, ...d.data(), type: 'history' }));
+                
+                // Also fetch First Bills from payments collection
+                const pq = query(
+                    collection(db, 'payments'),
+                    where('tenantId', '==', user.uid),
+                    where('type', '==', 'first_bill')
+                );
+                const psnap = await getDocs(pq);
+                const firstBills = psnap.docs.map(d => {
+                    const data = d.data();
+                    const isPaid = data.status === 'paid' || data.paidAt || isAnyFirstBillPaid;
+                    return {
+                        id: d.id,
+                        ...data,
+                        type: 'first_bill',
+                        status: isPaid ? 'paid' : data.status,
+                        // Map fields to match history record display
+                        roomNumber: data.roomNumber,
+                        apartmentName: data.apartmentName || 'สรุปยอดแรกเข้า',
+                        joinedAt: data.createdAt, 
+                        movedOutAt: data.paidAt || data.createdAt, 
+                        rentPrice: data.amount,
+                        floor: data.floor
+                    };
+                });
+
+                const combined = [...historyData, ...firstBills];
+                combined.sort((a, b) => {
+                    const dateA = a.type === 'first_bill' ? (a.paidAt?.toMillis?.() || a.createdAt?.toMillis?.()) : a.movedOutAt?.toMillis?.();
+                    const dateB = b.type === 'first_bill' ? (b.paidAt?.toMillis?.() || b.createdAt?.toMillis?.()) : b.movedOutAt?.toMillis?.();
+                    return (dateB || 0) - (dateA || 0);
+                });
+
+                setHistory(combined);
                 setLoading(false);
             } else {
                 const aptId = activeAptId && activeAptId !== 'all' ? activeAptId : null;
@@ -87,7 +127,8 @@ export default function TenantHistory({ user }) {
         load().catch(err => { console.error(err); setLoading(false); });
     }, [user, activeAptId, showToast]);
 
-    const LayoutComponent = isTenant ? ({ children }) => <div className="min-h-screen bg-brand-bg text-brand-text flex flex-col">{children}</div> : MainLayout;
+    // Simplified Layout selection
+    const LayoutComponent = isEmbedded ? EmbeddedLayout : (isTenant ? TenantWrapper : MainLayout);
 
     // ── Printing Logic ───────────────────────────────────────────────────────
     const handlePrintYearSummary = async (year) => {
@@ -217,7 +258,9 @@ export default function TenantHistory({ user }) {
 
     // Grouping by year
     const groupedByYear = displayRecords.reduce((acc, rec) => {
-        const date = rec.movedOutAt?.toDate ? rec.movedOutAt.toDate() : new Date(rec.movedOutAt);
+        const date = rec.type === 'first_bill' 
+            ? (rec.paidAt?.toDate ? rec.paidAt.toDate() : (rec.createdAt?.toDate ? rec.createdAt.toDate() : new Date()))
+            : (rec.movedOutAt?.toDate ? rec.movedOutAt.toDate() : new Date(rec.movedOutAt));
         const year = date.getFullYear() + 543; // Thai Year
         if (!acc[year]) acc[year] = [];
         acc[year].push(rec);
@@ -235,10 +278,10 @@ export default function TenantHistory({ user }) {
 
     return (
         <LayoutComponent profile={profile} apartments={apartments} activeAptId={activeAptId} onAptSwitch={handleAptSwitch} title="ประวัติการเช่า">
-            <Toast {...toast} onClose={hideToast} />
+            {!isEmbedded && <Toast {...toast} onClose={hideToast} />}
 
             {/* Premium Mobile Header for Tenant */}
-            {isTenant && (
+            {isTenant && !isEmbedded && (
                 <header className="sticky top-0 z-[60] bg-brand-bg/60 backdrop-blur-xl border-b border-white/5 px-5 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div onClick={() => navigate(-1)} className="w-10 h-10 bg-brand-card rounded-xl border border-white/10 flex items-center justify-center text-brand-gray-400 cursor-pointer">
@@ -252,18 +295,9 @@ export default function TenantHistory({ user }) {
                 </header>
             )}
 
-            <div className="px-5 lg:px-4 py-6 max-w-[1200px] mx-auto w-full relative z-10">
+            <div className={`px-2 lg:px-4 ${isEmbedded ? 'py-0' : 'py-6'} max-w-[1200px] mx-auto w-full relative z-10`}>
 
-                {/* ── Intro Section ─────────────────────────── */}
-                <div className="mb-8">
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 bg-brand-orange-500/10 rounded-xl flex items-center justify-center text-brand-orange-500">
-                            <Clock className="w-5 h-5" />
-                        </div>
-                        <h1 className="text-xl font-black text-white tracking-tight">คลังประวัติของคุณ</h1>
-                    </div>
-                    <p className="text-brand-gray-500 text-sm max-w-md">รวมข้อมูลการเข้าพักทั้งหมดของคุณที่ผ่านมา สามารถตรวจสอบยอดชำระและพิมพ์สรุปรายปีได้ครับ</p>
-                </div>
+
 
                 {/* ── Floor/Filter Row ──────────────────────── */}
                 <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-6">
@@ -293,15 +327,17 @@ export default function TenantHistory({ user }) {
                     </div>
                 </div>
 
-                {/* ── Search ────────────────────────────────── */}
-                <div className="relative mb-8">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-500" />
-                    <input
-                        type="text" value={search} onChange={e => setSearch(e.target.value)}
-                        placeholder={isTenant ? "ค้นหาชื่ออาคาร, เลขห้อง..." : "ค้นหาชื่อ, เลขห้อง, เบอร์โทร..."}
-                        className="w-full bg-brand-card/30 border border-white/5 rounded-2xl pl-12 pr-12 py-4 text-sm font-medium text-white placeholder:text-brand-gray-600 outline-none focus:border-brand-orange-500/50 focus:bg-brand-card/50 transition-all shadow-xl"
-                    />
-                </div>
+                {/* ── Search (Hidden for Tenant in Embedded) ────────────────── */}
+                {!isTenant && (
+                    <div className="relative mb-8">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-500" />
+                        <input
+                            type="text" value={search} onChange={e => setSearch(e.target.value)}
+                            placeholder="ค้นหาชื่อ, เลขห้อง, เบอร์โทร..."
+                            className="w-full bg-brand-card/30 border border-white/5 rounded-2xl pl-12 pr-12 py-4 text-sm font-medium text-white placeholder:text-brand-gray-600 outline-none focus:border-brand-orange-500/50 focus:bg-brand-card/50 transition-all shadow-xl"
+                        />
+                    </div>
+                )}
 
                 {/* ── Main display ──────────────────────────── */}
                 <div className="flex flex-col lg:flex-row gap-8 items-start">
@@ -345,66 +381,88 @@ export default function TenantHistory({ user }) {
 
                                                         <div className="flex flex-col lg:flex-row lg:items-center gap-4 p-4 lg:p-5">
                                                             {/* Primary Info: Name First */}
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-base shrink-0 ${getAvatarBg(isTenant ? record.apartmentName : record.tenantName)}`}>
-                                                                        {(isTenant ? record.apartmentName : record.tenantName || '').charAt(0).toUpperCase()}
-                                                                    </div>
-                                                                    <div className="min-w-0">
-                                                                        <h4 className="text-sm font-bold text-white truncate">
-                                                                            {isTenant ? record.apartmentName : record.tenantName || 'ไม่ทราบชื่อ'}
-                                                                        </h4>
-                                                                        <p className="text-[10px] font-medium text-brand-orange-500 uppercase tracking-widest mt-0.5">
-                                                                            {isTenant ? 'Apartment' : 'Tenant'}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Aligned Grid Columns */}
-                                                            <div className="hidden lg:grid grid-cols-3 gap-8 flex-[2] items-center">
-                                                                {/* Room Info */}
-                                                                <div className="text-left">
-                                                                    <p className="text-[9px] font-bold text-brand-gray-600 uppercase tracking-[0.15em] mb-1">ห้องพัก / ชั้น</p>
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <span className="text-sm font-black text-white">{record.roomNumber}</span>
-                                                                        <span className="text-[10px] text-brand-gray-500 font-medium">ชั้น {record.floor}</span>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-base shrink-0 ${record.type === 'first_bill' ? 'bg-brand-orange-500/20 text-brand-orange-500' : getAvatarBg(isTenant ? record.apartmentName : record.tenantName)}`}>
+                                                                            {record.type === 'first_bill' ? <Banknote size={20} /> : (isTenant ? record.apartmentName : record.tenantName || '').charAt(0).toUpperCase()}
+                                                                        </div>
+                                                                        <div className="min-w-0">
+                                                                            <h4 className="text-sm font-bold text-white truncate">
+                                                                                {record.type === 'first_bill' ? 'บิลค่าแรกเข้า / มัดจำ' : (isTenant ? record.apartmentName : record.tenantName || 'ไม่ทราบชื่อ')}
+                                                                            </h4>
+                                                                            <p className="text-[10px] font-medium text-brand-orange-500 uppercase tracking-widest mt-0.5">
+                                                                                {record.type === 'first_bill' ? 'First Bill' : (isTenant ? 'Apartment' : 'Tenant')}
+                                                                            </p>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
 
-                                                                {/* Duration Info */}
-                                                                <div className="text-left">
-                                                                    <p className="text-[9px] font-bold text-brand-gray-600 uppercase tracking-[0.15em] mb-1">ระยะเวลาเข้าพัก</p>
-                                                                    <div className="flex items-center gap-2 text-[11px] text-brand-gray-400 font-medium whitespace-nowrap">
-                                                                        <CalendarDays className="w-3.5 h-3.5 text-brand-orange-500/50" />
-                                                                        <span>{fmtDate(record.joinedAt)} - {fmtDate(record.movedOutAt)}</span>
+                                                                {/* Aligned Grid Columns */}
+                                                                <div className="hidden lg:grid grid-cols-3 gap-8 flex-[2] items-center">
+                                                                    {/* Room Info */}
+                                                                    <div className="text-left">
+                                                                        <p className="text-[9px] font-bold text-brand-gray-600 uppercase tracking-[0.15em] mb-1">ห้องพัก / ชั้น</p>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-sm font-black text-white">{record.roomNumber}</span>
+                                                                            <span className="text-[10px] text-brand-gray-500 font-medium">ชั้น {record.floor}</span>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Duration Info */}
+                                                                    <div className="text-left">
+                                                                        <p className="text-[9px] font-bold text-brand-gray-600 uppercase tracking-[0.15em] mb-1">{record.type === 'first_bill' ? 'สถานะการชำระ' : 'ระยะเวลาเข้าพัก'}</p>
+                                                                        <div className="flex items-center gap-2 text-[11px] font-medium whitespace-nowrap">
+                                                                            {record.type === 'first_bill' ? (
+                                                                                record.status === 'paid' ? (
+                                                                                    <span className="text-emerald-500 flex items-center gap-1.5">
+                                                                                        <CheckCircle2 size={14} /> ชำระแล้ว
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span className="text-yellow-500 flex items-center gap-1.5">
+                                                                                        <Clock size={14} /> รอชำระ
+                                                                                    </span>
+                                                                                )
+                                                                            ) : (
+                                                                                <>
+                                                                                    <CalendarDays className="w-3.5 h-3.5 text-brand-orange-500/50" />
+                                                                                    <span className="text-brand-gray-400">{fmtDate(record.joinedAt)} - {fmtDate(record.movedOutAt)}</span>
+                                                                                </>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Financial Info */}
+                                                                    <div className="text-left">
+                                                                        <p className="text-[9px] font-bold text-brand-gray-600 uppercase tracking-[0.15em] mb-1">{record.type === 'first_bill' ? 'ยอดรวม' : 'ค่าเช่าล่าสุด'}</p>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-sm font-black text-white">{record.rentPrice?.toLocaleString() || 0}</span>
+                                                                            <span className="text-[10px] text-brand-gray-500 font-medium">บาท</span>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
 
-                                                                {/* Financial Info */}
-                                                                <div className="text-left">
-                                                                    <p className="text-[9px] font-bold text-brand-gray-600 uppercase tracking-[0.15em] mb-1">ค่าเช่าล่าสุด</p>
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <span className="text-sm font-black text-white">{record.rentPrice?.toLocaleString() || 0}</span>
-                                                                        <span className="text-[10px] text-brand-gray-500 font-medium">บาท</span>
+                                                                {/* Mobile Support Info */}
+                                                                <div className="lg:hidden flex items-center justify-between pt-3 border-t border-white/5">
+                                                                    <div className="flex items-center gap-4 text-[11px] text-brand-gray-400 font-medium">
+                                                                        <div className="flex items-center gap-1">
+                                                                            <Building className="w-3 h-3" /> {record.roomNumber}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1">
+                                                                            {record.type === 'first_bill' ? (
+                                                                                record.status === 'paid' ? (
+                                                                                    <span className="text-emerald-500 flex items-center gap-1"><CheckCircle2 size={12} /> ชำระแล้ว</span>
+                                                                                ) : (
+                                                                                    <span className="text-yellow-500 flex items-center gap-1"><Clock size={12} /> รอชำระ</span>
+                                                                                )
+                                                                            ) : (
+                                                                                <><CalendarDays className="w-3 h-3" /> {fmtDate(record.movedOutAt)}</>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-sm font-black text-white">
+                                                                        {record.rentPrice?.toLocaleString() || 0} <span className="text-[10px] font-normal text-brand-gray-600">บ.</span>
                                                                     </div>
                                                                 </div>
-                                                            </div>
-
-                                                            {/* Mobile Support Info */}
-                                                            <div className="lg:hidden flex items-center justify-between pt-3 border-t border-white/5">
-                                                                <div className="flex items-center gap-4 text-[11px] text-brand-gray-400 font-medium">
-                                                                    <div className="flex items-center gap-1">
-                                                                        <Building className="w-3 h-3" /> {record.roomNumber}
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1">
-                                                                        <CalendarDays className="w-3 h-3" /> {fmtDate(record.movedOutAt)}
-                                                                    </div>
-                                                                </div>
-                                                                <div className="text-sm font-black text-white">
-                                                                    {record.rentPrice?.toLocaleString() || 0} <span className="text-[10px] font-normal text-brand-gray-600">บ.</span>
-                                                                </div>
-                                                            </div>
 
                                                             {/* Action Icon */}
                                                             <div className="hidden lg:flex shrink-0">
@@ -442,9 +500,11 @@ export default function TenantHistory({ user }) {
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                                            <p className="text-[9px] font-bold text-brand-gray-500 uppercase mb-1">ระยะเวลาพัก</p>
-                                            <p className="text-sm font-bold text-white">
-                                                {(() => {
+                                            <p className="text-[9px] font-bold text-brand-gray-500 uppercase mb-1">{selectedRecord.type === 'first_bill' ? 'สถานะการชำระ' : 'ระยะเวลาพัก'}</p>
+                                            <p className={`text-sm font-bold ${selectedRecord.status === 'paid' ? 'text-emerald-500' : 'text-white'}`}>
+                                                {selectedRecord.type === 'first_bill' ? (
+                                                    selectedRecord.status === 'paid' ? 'ชำระเรียบร้อย' : 'รอการชำระ'
+                                                ) : (() => {
                                                     const join = selectedRecord.joinedAt?.toDate ? selectedRecord.joinedAt.toDate() : new Date(selectedRecord.joinedAt);
                                                     const out = selectedRecord.movedOutAt?.toDate ? selectedRecord.movedOutAt.toDate() : new Date(selectedRecord.movedOutAt);
                                                     const diff = out - join;
@@ -454,23 +514,31 @@ export default function TenantHistory({ user }) {
                                             </p>
                                         </div>
                                         <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                                            <p className="text-[9px] font-bold text-brand-gray-500 uppercase mb-1">ค่าเช่าล่าสุด</p>
+                                            <p className="text-[9px] font-bold text-brand-gray-500 uppercase mb-1">{selectedRecord.type === 'first_bill' ? 'ยอดที่ชำระ' : 'ค่าเช่าล่าสุด'}</p>
                                             <p className="text-sm font-bold text-white">{selectedRecord.rentPrice?.toLocaleString() || 0} บาท</p>
                                         </div>
                                     </div>
 
                                     <div className="space-y-4">
-                                        <h4 className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-widest pl-2">ไทม์ไลน์การเข้าพัก</h4>
+                                        <h4 className="text-[10px] font-bold text-brand-gray-600 uppercase tracking-widest pl-2">
+                                            {selectedRecord.type === 'first_bill' ? 'ประวัติธุรกรรม' : 'ไทม์ไลน์การเข้าพัก'}
+                                        </h4>
                                         <div className="relative pl-6 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[1px] before:bg-white/10">
                                             <div className="relative">
                                                 <div className="absolute left-[-21px] top-1.5 w-[11px] h-[11px] rounded-full bg-emerald-500 border-2 border-brand-bg shadow-[0_0_10px_rgba(16,185,129,0.3)]"></div>
-                                                <p className="text-[9px] font-bold text-emerald-500 uppercase mb-0.5">วันที่ย้ายเข้า</p>
+                                                <p className="text-[9px] font-bold text-emerald-500 uppercase mb-0.5">
+                                                    {selectedRecord.type === 'first_bill' ? 'วันที่เปิดบิล' : 'วันที่ย้ายเข้า'}
+                                                </p>
                                                 <p className="text-sm font-bold text-white">{fmtDate(selectedRecord.joinedAt)}</p>
                                             </div>
                                             <div className="relative">
-                                                <div className="absolute left-[-21px] top-1.5 w-[11px] h-[11px] rounded-full bg-red-500 border-2 border-brand-bg shadow-[0_0_10px_rgba(239,68,68,0.3)]"></div>
-                                                <p className="text-[9px] font-bold text-red-500 uppercase mb-0.5">วันที่ย้ายออก</p>
-                                                <p className="text-sm font-bold text-white">{fmtDate(selectedRecord.movedOutAt)}</p>
+                                                <div className={`absolute left-[-21px] top-1.5 w-[11px] h-[11px] rounded-full border-2 border-brand-bg shadow-[0_0_10px_rgba(239,68,68,0.3)] ${selectedRecord.type === 'first_bill' ? (selectedRecord.status === 'paid' ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-yellow-500 shadow-[0_0_10px_rgba(245,158,11,0.3)]') : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]'}`}></div>
+                                                <p className={`text-[9px] font-bold uppercase mb-0.5 ${selectedRecord.type === 'first_bill' ? (selectedRecord.status === 'paid' ? 'text-emerald-500' : 'text-yellow-500') : 'text-red-500'}`}>
+                                                    {selectedRecord.type === 'first_bill' ? (selectedRecord.status === 'paid' ? 'วันที่ชำระ' : 'สถานะปัจจุบัน') : 'วันที่ย้ายออก'}
+                                                </p>
+                                                <p className="text-sm font-bold text-white">
+                                                    {selectedRecord.type === 'first_bill' ? (selectedRecord.status === 'paid' ? fmtDate(selectedRecord.movedOutAt) : 'รอชำระ') : fmtDate(selectedRecord.movedOutAt)}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>

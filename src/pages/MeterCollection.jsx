@@ -47,7 +47,7 @@ export default function MeterCollection({ user }) {
     // --- Load ---
     const loadData = useCallback(async () => {
         if (!user || !activeAptId || activeAptId === 'all') {
-            setLoading(false);
+            setTimeout(() => setLoading(false), 0);
             return;
         }
         setLoading(true);
@@ -115,9 +115,9 @@ export default function MeterCollection({ user }) {
             showToast('โหลดข้อมูลล้มเหลว', 'error');
         }
         setLoading(false);
-    }, [user, activeAptId, meterType]);
+    }, [user, activeAptId, meterType, showToast]);
 
-    useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => { setTimeout(() => loadData(), 0); }, [loadData]);
 
     // --- Save one room ---
     const handleSave = async (roomNumber) => {

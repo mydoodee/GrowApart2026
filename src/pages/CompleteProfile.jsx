@@ -14,6 +14,8 @@ export default function CompleteProfile({ user }) {
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [carPlate, setCarPlate] = useState('');
+  const [motoPlate, setMotoPlate] = useState('');
   const [role, setRole] = useState(null);
 
   useEffect(() => {
@@ -30,6 +32,8 @@ export default function CompleteProfile({ user }) {
           const data = docSnap.data();
           setName(data.name || user.displayName || '');
           setPhone(data.phone || '');
+          setCarPlate(data.vehicles?.car?.[0] || '');
+          setMotoPlate(data.vehicles?.motorcycle?.[0] || '');
           setRole(data.role);
           
           // If already complete, redirect away
@@ -49,7 +53,7 @@ export default function CompleteProfile({ user }) {
     };
 
     fetchProfile();
-  }, [user, navigate]);
+  }, [user, navigate, showToast]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -66,11 +70,20 @@ export default function CompleteProfile({ user }) {
     setSubmitting(true);
     try {
       const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
+      
+      const payload = {
         name: name.trim(),
         phone: phone.trim(),
         updatedAt: serverTimestamp()
-      });
+      };
+      
+      if (carPlate.trim() || motoPlate.trim()) {
+          payload.vehicles = {};
+          if (carPlate.trim()) payload.vehicles.car = [carPlate.trim()];
+          if (motoPlate.trim()) payload.vehicles.motorcycle = [motoPlate.trim()];
+      }
+      
+      await updateDoc(userRef, payload);
 
       showToast('บันทึกข้อมูลเรียบร้อยแล้ว', 'success');
       
@@ -143,7 +156,37 @@ export default function CompleteProfile({ user }) {
               />
             </div>
           </div>
+          <div className="space-y-2">
+            <label className="text-[11px] font-bold text-brand-orange-500 uppercase tracking-widest px-1">ทะเบียนรถยนต์ (ถ้ามี)</label>
+            <div className="relative group">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors">
+                <span className="text-sm">🚗</span>
+              </div>
+              <input
+                type="text"
+                placeholder="เช่น กก 1234 กทม."
+                value={carPlate}
+                onChange={(e) => setCarPlate(e.target.value)}
+                className="w-full bg-white/5 rounded-2xl pl-12 pr-4 py-4 text-white border border-white/10 focus:border-brand-orange-500 outline-none placeholder:text-white/10 transition-all font-medium"
+              />
+            </div>
+          </div>
 
+          <div className="space-y-2">
+            <label className="text-[11px] font-bold text-brand-orange-500 uppercase tracking-widest px-1">ทะเบียนรถจักรยานยนต์ (ถ้ามี)</label>
+            <div className="relative group">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors">
+                <span className="text-sm">🏍️</span>
+              </div>
+              <input
+                type="text"
+                placeholder="เช่น 1กข 5678 กทม."
+                value={motoPlate}
+                onChange={(e) => setMotoPlate(e.target.value)}
+                className="w-full bg-white/5 rounded-2xl pl-12 pr-4 py-4 text-white border border-white/10 focus:border-brand-orange-500 outline-none placeholder:text-white/10 transition-all font-medium"
+              />
+            </div>
+          </div>
           <button
             type="submit"
             disabled={submitting}

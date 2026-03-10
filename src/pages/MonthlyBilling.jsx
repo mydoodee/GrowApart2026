@@ -49,7 +49,7 @@ export default function MonthlyBilling({ user }) {
     // --- Load Data ---
     const loadData = useCallback(async () => {
         if (!user || !activeAptId || activeAptId === 'all') {
-            setLoading(false);
+            setTimeout(() => setLoading(false), 0);
             return;
         }
         setLoading(true);
@@ -111,9 +111,9 @@ export default function MonthlyBilling({ user }) {
             showToast('โหลดข้อมูลล้มเหลว', 'error');
         }
         setLoading(false);
-    }, [user, activeAptId, monthKey]);
+    }, [user, activeAptId, monthKey, showToast]);
 
-    useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => { setTimeout(() => loadData(), 0); }, [loadData]);
 
     const handleAptSwitch = (id) => {
         localStorage.setItem('activeApartmentId', id);
