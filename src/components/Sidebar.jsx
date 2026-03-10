@@ -6,13 +6,14 @@ import { auth, db } from '../firebase';
 import SegmentedSwitcher from './SegmentedSwitcher';
 import {
     LogOut, Home, User, Settings, Building,
-    X, LayoutGrid, ClipboardList, MessageSquare, Clock, Gauge, FileText, CreditCard, Package
+    X, LayoutGrid, ClipboardList, MessageSquare, Clock, Gauge, FileText, CreditCard, Package, CalendarCheck
 } from 'lucide-react';
 export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpen, apartments, onAptSwitch }) {
     const navigate = useNavigate();
     const location = useLocation();
     const [requestCount, setRequestCount] = useState(0);
     const [pendingSlipCount, setPendingSlipCount] = useState(0);
+    const [bookingCount, setBookingCount] = useState(0);
     const path = location.pathname;
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
@@ -44,7 +45,17 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
             setPendingSlipCount(snapshot.size);
         });
 
-        return () => { unsubscribe(); unsubscribeSlips(); };
+        // Listen for pending bookings to show badge
+        const bookingQ = query(
+            collection(db, 'bookings'),
+            where('apartmentId', '==', activeAptId),
+            where('status', '==', 'pending')
+        );
+        const unsubscribeBookings = onSnapshot(bookingQ, (snapshot) => {
+            setBookingCount(snapshot.size);
+        });
+
+        return () => { unsubscribe(); unsubscribeSlips(); unsubscribeBookings(); };
     }, [activeAptId]);
 
     const handleLogout = async () => {
@@ -130,6 +141,14 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
             icon: <Package className="w-5 h-5 mr-3" />,
             path: '/parcels',
             active: path === '/parcels'
+        },
+        {
+            label: 'การจองห้อง',
+            icon: <CalendarCheck className="w-5 h-5 mr-3" />,
+            path: '/bookings',
+            active: path === '/bookings',
+            badge: bookingCount,
+            badgeColor: 'bg-violet-500'
         }
     ];
 

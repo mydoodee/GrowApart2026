@@ -5,7 +5,7 @@ import { db } from '../firebase';
 import {
     Home, Save, X, LayoutGrid, Check, Zap, Droplets, List,
     Search, ChevronDown, Loader2, DoorOpen, User, ExternalLink,
-    CheckCircle2, ChevronRight, Building2, Map
+    CheckCircle2, ChevronRight, Building2, Map, Phone, Calendar, Plus
 } from 'lucide-react';
 import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
@@ -34,10 +34,13 @@ const getStatusStyle = (status) => {
 };
 
 // ─── StatusPill ───────────────────────────────────────────────────────────────
-const StatusPill = ({ status }) => {
+const StatusPill = ({ status, onClick }) => {
     const style = getStatusStyle(status);
     return (
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${style.bg} ${style.text} border ${style.border}`}>
+        <span
+            onClick={onClick}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all ${style.bg} ${style.text} border ${style.border} ${onClick ? 'cursor-pointer hover:bg-white/10 active:scale-95' : ''}`}
+        >
             <span className={`w-1 h-1 rounded-full ${style.dot}`} />
             {style.label}
         </span>
@@ -107,6 +110,10 @@ export default function RoomManagement({ user }) {
                 if (activeAptId && activeAptId !== 'all') {
                     const activeApt = apps.find(a => a.id === activeAptId);
                     const tenantQ = query(collection(db, 'users'), where(`apartmentRoles.${activeAptId}.role`, '==', 'tenant'));
+
+                    // Bookings listener
+                    const bookingsQ = query(collection(db, 'bookings'), where('apartmentId', '==', activeAptId), where('status', 'in', ['pending', 'confirmed']));
+
                     const unsubTenants = onSnapshot(tenantQ, (tenantSnap) => {
                         const tenantsByRoom = {};
                         tenantSnap.docs.forEach(d => {
@@ -114,24 +121,59 @@ export default function RoomManagement({ user }) {
                             const rn = data.apartmentRoles?.[activeAptId]?.roomNumber;
                             if (rn) tenantsByRoom[rn] = { tenantId: d.id, tenantName: data.name || data.displayName || '' };
                         });
-                        const roomsQ = query(collection(db, 'rooms'), where('apartmentId', '==', activeAptId));
-                        const unsubRooms = onSnapshot(roomsQ, (snapshot) => {
-                            const firestoreRooms = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                            const generated = generateRoomsFromConfig(activeApt);
-                            const allRooms = generated.map(genRoom => {
-                                const existing = firestoreRooms.find(r => r.roomNumber === genRoom.roomNumber);
-                                const room = existing ? { ...existing } : { ...genRoom };
-                                const tenant = tenantsByRoom[room.roomNumber];
-                                if (tenant) { room.status = 'ไม่ว่าง'; room.tenantId = tenant.tenantId; room.tenantName = tenant.tenantName; }
-                                else if (!existing || !room.tenantId) {
-                                    if (normalizeStatus(room.status) === 'ไม่ว่าง' || room.status === 'occupied') { room.status = 'ว่าง'; room.tenantId = null; room.tenantName = null; }
-                                }
-                                return room;
+
+                        const unsubBookings = onSnapshot(bookingsQ, (bookingSnap) => {
+                            const bookingsByRoom = {};
+                            bookingSnap.docs.forEach(d => {
+                                const data = d.data();
+                                if (data.roomNumber) bookingsByRoom[data.roomNumber] = { id: d.id, ...data };
                             });
-                            setRooms(allRooms);
-                            setLoading(false);
+
+                            const roomsQ = query(collection(db, 'rooms'), where('apartmentId', '==', activeAptId));
+                            const unsubRooms = onSnapshot(roomsQ, (snapshot) => {
+                                const firestoreRooms = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                                const generated = generateRoomsFromConfig(activeApt);
+                                const allRooms = generated.map(genRoom => {
+                                    const existing = firestoreRooms.find(r => r.roomNumber === genRoom.roomNumber);
+                                    const room = existing ? { ...existing } : { ...genRoom };
+
+                                    // Attach tenant info
+                                    const tenant = tenantsByRoom[room.roomNumber];
+                                    if (tenant) {
+                                        room.status = 'ไม่ว่าง';
+                                        room.tenantId = tenant.tenantId;
+                                        room.tenantName = tenant.tenantName;
+                                    }
+                                    else if (!existing || !room.tenantId) {
+                                        if (normalizeStatus(room.status) === 'ไม่ว่าง' || room.status === 'occupied') {
+                                            room.status = 'ว่าง';
+                                            room.tenantId = null;
+                                            room.tenantName = null;
+                                        }
+                                    }
+
+                                    // Attach booking info
+                                    const booking = bookingsByRoom[room.roomNumber];
+                                    if (booking) {
+                                        room.booking = booking;
+                                        // If vacant but has booking, show as reserved
+                                        if (normalizeStatus(room.status) === 'ว่าง') {
+                                            room.status = 'จอง';
+                                        }
+                                    }
+
+                                    return room;
+                                });
+                                setRooms(allRooms);
+                                setLoading(false);
+                            });
+
+                            unsubscribe = () => {
+                                unsubRooms();
+                                unsubTenants();
+                                unsubBookings();
+                            };
                         });
-                        unsubscribe = () => { unsubRooms(); unsubTenants(); };
                     });
                 } else if (activeAptId === 'all') {
                     const tenantSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'tenant')));
@@ -220,7 +262,8 @@ export default function RoomManagement({ user }) {
         if (filterStatus !== 'all') {
             if (filterStatus === 'occupied' && normStatus !== 'ไม่ว่าง') return false;
             if (filterStatus === 'vacant' && normStatus !== 'ว่าง') return false;
-            if (filterStatus === 'repair' && (normStatus !== 'แจ้งซ่อม' && normStatus !== 'จอง')) return false;
+            if (filterStatus === 'repair' && normStatus !== 'แจ้งซ่อม') return false;
+            if (filterStatus === 'reserved' && normStatus !== 'จอง') return false;
         }
 
         if (!sq) return true;
@@ -230,6 +273,7 @@ export default function RoomManagement({ user }) {
     const occupiedCount = rooms.filter(r => normalizeStatus(r.status) === 'ไม่ว่าง').length;
     const vacantCount = rooms.filter(r => normalizeStatus(r.status) === 'ว่าง').length;
     const repairCount = rooms.filter(r => normalizeStatus(r.status) === 'แจ้งซ่อม').length;
+    const reservedCount = rooms.filter(r => normalizeStatus(r.status) === 'จอง').length;
     const totalRooms = rooms.length;
     const occupancyRate = totalRooms > 0 ? Math.round((occupiedCount / totalRooms) * 100) : 0;
 
@@ -248,12 +292,13 @@ export default function RoomManagement({ user }) {
             <div className="px-3 sm:px-5 py-3 max-w-[1600px] mx-auto w-full">
 
                 {/* ── Stats Bar ─────────────────────────────── */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-4">
                     {[
                         { id: 'all', label: 'ทั้งหมด', val: totalRooms, icon: <Building2 className="w-4 h-4" />, color: 'text-zinc-300', iconBg: 'bg-white/5' },
                         { id: 'occupied', label: 'มีผู้เช่า', val: occupiedCount, icon: <User className="w-4 h-4" />, color: 'text-blue-400', iconBg: 'bg-blue-500/10' },
                         { id: 'vacant', label: 'ว่าง', val: vacantCount, icon: <Home className="w-4 h-4" />, color: 'text-emerald-400', iconBg: 'bg-emerald-500/10' },
-                        { id: 'repair', label: 'ซ่อม/จอง', val: repairCount, icon: <Zap className="w-4 h-4" />, color: 'text-amber-400', iconBg: 'bg-amber-500/10' },
+                        { id: 'repair', label: 'แจ้งซ่อม', val: repairCount, icon: <Zap className="w-4 h-4" />, color: 'text-red-400', iconBg: 'bg-red-500/10' },
+                        { id: 'reserved', label: 'จอง', val: reservedCount, icon: <DoorOpen className="w-4 h-4" />, color: 'text-amber-400', iconBg: 'bg-amber-500/10' },
                     ].map((s) => (
                         <button
                             key={s.id}
@@ -261,20 +306,20 @@ export default function RoomManagement({ user }) {
                                 setFilterStatus(prev => prev === s.id ? 'all' : s.id);
                                 if (filterFloor !== 'all') setFilterFloor('all');
                             }}
-                            className={`relative overflow-hidden transition-all duration-300 px-3 py-1.5 rounded-lg border text-left active:scale-[0.98] group ${filterStatus === s.id
+                            className={`relative overflow-hidden transition-all duration-300 px-3 py-2 rounded-xl border text-left active:scale-[0.98] group ${filterStatus === s.id
                                 ? 'bg-brand-card shadow-2xl border-brand-orange-500/50 -translate-y-0.5'
                                 : 'bg-brand-card/30 hover:bg-brand-card/50 border-white/5 hover:border-white/10'
                                 }`}
                         >
-                            <div className="flex items-center gap-2 relative z-10">
-                                <div className={`w-6 h-6 rounded-md ${s.iconBg} ${s.color} flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform duration-500`}>
-                                    {React.cloneElement(s.icon, { className: 'w-3 h-3' })}
+                            <div className="flex items-center gap-2.5 relative z-10">
+                                <div className={`w-8 h-8 rounded-lg ${s.iconBg} ${s.color} flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform duration-500`}>
+                                    {React.cloneElement(s.icon, { className: 'w-4 h-4' })}
                                 </div>
                                 <div className="flex-1">
-                                    <p className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter truncate opacity-70 mb-0.5">{s.label}</p>
+                                    <p className="text-[9px] font-black text-zinc-500 uppercase tracking-tighter truncate opacity-70 mb-0.5">{s.label}</p>
                                     <div className="flex items-baseline gap-0.5">
-                                        <span className={`text-sm font-black tracking-tight ${filterStatus === s.id ? 'text-white' : s.color}`}>{s.val}</span>
-                                        <span className="text-[8px] font-bold text-zinc-600">ห้อง</span>
+                                        <span className={`text-base font-black tracking-tight ${filterStatus === s.id ? 'text-white' : s.color}`}>{s.val}</span>
+                                        <span className="text-[9px] font-bold text-zinc-600">ห้อง</span>
                                     </div>
                                 </div>
                             </div>
@@ -286,24 +331,24 @@ export default function RoomManagement({ user }) {
                 </div>
 
                 {/* ── Occupancy mini-bar ─────────────────────────── */}
-                <div className="mb-4 bg-brand-card/30 backdrop-blur-md border border-white/5 rounded-2xl p-4 flex items-center gap-4 group">
+                <div className="mb-4 bg-brand-card/30 backdrop-blur-md border border-white/5 rounded-2xl p-2.5 flex items-center gap-3 group">
                     <div className="flex flex-col">
-                        <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-black shrink-0 flex items-center gap-1.5">
-                            <LayoutGrid className="w-3 h-3 text-blue-500" /> อัตราการเข้าพัก
+                        <span className="text-[9px] text-zinc-500 uppercase tracking-widest font-black shrink-0 flex items-center gap-1.5">
+                            <LayoutGrid className="w-2.5 h-2.5 text-blue-500" /> อัตราการเข้าพัก
                         </span>
-                        <span className="text-xl font-black text-blue-400 leading-none mt-1">{occupancyRate}%</span>
+                        <span className="text-base font-black text-blue-400 leading-none mt-0.5">{occupancyRate}%</span>
                     </div>
-                    <div className="flex-1 h-3 bg-zinc-800/50 rounded-full overflow-hidden p-[2px] border border-white/5">
+                    <div className="flex-1 h-2 bg-zinc-800/50 rounded-full overflow-hidden p-[1px] border border-white/5">
                         <div
-                            className="h-full bg-gradient-to-r from-blue-600 via-blue-400 to-emerald-400 rounded-full transition-all duration-1000 ease-out relative shadow-[0_0_10px_rgba(59,130,246,0.3)]"
+                            className="h-full bg-gradient-to-r from-blue-600 via-blue-400 to-emerald-400 rounded-full transition-all duration-1000 ease-out relative shadow-[0_0_10px_rgba(59,130,246,0.2)]"
                             style={{ width: `${occupancyRate}%` }}
                         >
                             <div className="absolute inset-0 bg-white/20 animate-pulse" />
                         </div>
                     </div>
-                    <div className="hidden sm:flex flex-col items-end">
-                        <span className="text-[10px] text-zinc-500 font-bold uppercase">{occupiedCount} / {totalRooms}</span>
-                        <span className="text-[9px] text-zinc-600 font-medium">ห้องไม่ว่าง</span>
+                    <div className="hidden sm:flex flex-col items-end shrink-0">
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase">{occupiedCount} / {totalRooms}</span>
+                        <span className="text-[8px] text-zinc-600 font-medium">ห้องไม่ว่าง</span>
                     </div>
                 </div>
 
@@ -416,7 +461,15 @@ export default function RoomManagement({ user }) {
                                                             </div>
                                                         </td>
                                                         <td className="px-4 py-3">
-                                                            <StatusPill status={room.status} />
+                                                            <StatusPill
+                                                                status={room.status}
+                                                                onClick={(e) => {
+                                                                    if (normalizeStatus(room.status) === 'จอง') {
+                                                                        e.stopPropagation();
+                                                                        navigate(`/bookings?roomNumber=${room.roomNumber}`);
+                                                                    }
+                                                                }}
+                                                            />
                                                         </td>
                                                         <td className="px-4 py-3 hidden sm:table-cell">
                                                             <p className={`text-xs font-medium truncate max-w-[120px] ${isVacant ? 'text-zinc-600 italic' : 'text-zinc-300'}`}>
@@ -553,9 +606,12 @@ export default function RoomManagement({ user }) {
                                     {/* Scrollable Content */}
                                     <div className="overflow-y-auto flex-1 divide-y divide-white/[0.04] bg-zinc-950/20">
 
-                                        {/* Tenant info (Top Priority) */}
+                                        {/* Tenant / booking info (Top Priority) */}
                                         <div className="px-5 py-3 bg-white/[0.02]">
-                                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-2">ผู้เช่าปัจจุบัน</p>
+                                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-2">
+                                                {selectedRoom.tenantId ? 'ผู้เช่าปัจจุบัน' : (selectedRoom.booking ? 'ข้อมูลการจอง' : 'ผู้ดูแลพัก/ห้องว่าง')}
+                                            </p>
+
                                             {selectedRoom.tenantId ? (
                                                 <button
                                                     onClick={() => navigate(`/tenants?tenantId=${selectedRoom.tenantId}`)}
@@ -578,36 +634,44 @@ export default function RoomManagement({ user }) {
                                                         <ExternalLink className="w-3 h-3 text-zinc-500 group-hover/tenant:text-white" />
                                                     </div>
                                                 </button>
+                                            ) : selectedRoom.booking ? (
+                                                <button
+                                                    onClick={() => navigate(`/bookings`)}
+                                                    className="w-full flex items-center gap-2.5 bg-amber-500/5 hover:bg-amber-500/10 backdrop-blur-md border border-amber-500/20 rounded-xl p-2 transition-all text-left group/booking shadow-xl"
+                                                >
+                                                    <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20 group-hover/booking:scale-105 transition-transform duration-500">
+                                                        <DoorOpen className="w-4 h-4 text-amber-400" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <p className="text-xs font-black text-white truncate">{selectedRoom.booking.guestName}</p>
+                                                            <div className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
+                                                        </div>
+                                                        <div className="flex items-center gap-1 mt-0.5">
+                                                            <Phone className="w-2.5 h-2.5 text-amber-400/60" />
+                                                            <p className="text-[9px] text-zinc-500 font-bold tracking-wider">{selectedRoom.booking.guestPhone}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center group-hover/booking:bg-amber-500 transition-all">
+                                                        <ExternalLink className="w-3 h-3 text-zinc-500 group-hover/booking:text-white" />
+                                                    </div>
+                                                </button>
                                             ) : (
-                                                <div className="w-full h-12 bg-zinc-900/30 border border-white/5 border-dashed rounded-xl flex items-center justify-center gap-2 text-zinc-600">
-                                                    <Home className="w-3.5 h-3.5 opacity-30" />
-                                                    <p className="text-[10px] font-bold uppercase tracking-widest italic">ยังไม่มีผู้เช่าเข้าพัก</p>
+                                                <div className="space-y-2">
+                                                    <div className="w-full h-12 bg-zinc-900/30 border border-white/5 border-dashed rounded-xl flex items-center justify-center gap-2 text-zinc-600">
+                                                        <Home className="w-3.5 h-3.5 opacity-30" />
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest italic">ยังไม่มีผู้เช่าเข้าพัก</p>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => navigate(`/bookings?roomNumber=${selectedRoom.roomNumber}&mode=add`)}
+                                                        className="w-full py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        <Plus className="w-3.5 h-3.5" /> จองห้องนี้
+                                                    </button>
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* Status Chip Row */}
-                                        <div className="px-5 py-3">
-                                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-2">สถานะห้อง</p>
-                                            <div className="flex flex-wrap gap-1">
-                                                {['ว่าง', 'ไม่ว่าง', 'แจ้งซ่อม', 'จอง'].map(st => {
-                                                    const isActive = normalizeStatus(selectedRoom.status) === st;
-                                                    const s = STATUS_COLORS[st];
-                                                    return (
-                                                        <button
-                                                            key={st}
-                                                            onClick={() => setSelectedRoom({ ...selectedRoom, status: st })}
-                                                            className={`flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${isActive
-                                                                ? `${s.bg} ${s.border} ${s.text} scale-[1.02] shadow-sm`
-                                                                : 'bg-zinc-900/40 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10'}`}
-                                                        >
-                                                            <div className={`w-1 h-1 rounded-full ${s.dot} ${isActive ? 'animate-pulse' : ''}`} />
-                                                            {st === 'แจ้งซ่อม' ? 'ซ่อม' : st}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
 
                                         {/* Pricing Row (Compact) */}
                                         <div className="px-5 py-3 bg-white/[0.01]">
@@ -694,8 +758,8 @@ export default function RoomManagement({ user }) {
                                                                     setSelectedRoom({ ...selectedRoom, fixedExpenses: currentFixed });
                                                                 }}
                                                                 className={`flex items-center justify-between px-2 py-1.5 rounded-lg border text-[10px] transition-all ${isActive
-                                                                        ? 'bg-brand-orange-500/10 border-brand-orange-500/30 text-white shadow-sm'
-                                                                        : 'bg-zinc-900/40 border-white/5 text-zinc-500 hover:border-white/10'
+                                                                    ? 'bg-brand-orange-500/10 border-brand-orange-500/30 text-white shadow-sm'
+                                                                    : 'bg-zinc-900/40 border-white/5 text-zinc-500 hover:border-white/10'
                                                                     }`}
                                                             >
                                                                 <span className="font-bold truncate max-w-[60px]">{expense.name}</span>

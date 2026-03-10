@@ -89,6 +89,7 @@ export default function ParcelManagement({ user }) {
     });
     const [photoFiles, setPhotoFiles] = useState([]);
     const [photoPreviews, setPhotoPreviews] = useState([]);
+    const [selectedFloor, setSelectedFloor] = useState('');
 
     // Rooms data for autocomplete/validation
     const [rooms, setRooms] = useState([]);
@@ -211,6 +212,7 @@ export default function ParcelManagement({ user }) {
             showToast('เพิ่มพัสดุสำเร็จ', 'success');
             setIsAddModalOpen(false);
             setFormData({ roomNumber: '', remark: '' });
+            setSelectedFloor('');
             setPhotoFiles([]);
             setPhotoPreviews([]);
         } catch (error) {
@@ -263,6 +265,24 @@ export default function ParcelManagement({ user }) {
             console.error(error);
             showToast('เกิดข้อผิดพลาดในการลบ', 'error');
         }
+    };
+
+    // Derived: occupied rooms only
+    const occupiedRooms = rooms.filter(r => r.tenantId);
+
+    // Unique floors from occupied rooms, sorted
+    const availableFloors = [...new Set(occupiedRooms.map(r => r.floor))]
+        .filter(f => f !== undefined && f !== null)
+        .sort((a, b) => Number(a) - Number(b));
+
+    // Rooms on selected floor
+    const roomsOnFloor = selectedFloor !== ''
+        ? occupiedRooms.filter(r => String(r.floor) === String(selectedFloor))
+        : [];
+
+    const handleFloorChange = (e) => {
+        setSelectedFloor(e.target.value);
+        setFormData(prev => ({ ...prev, roomNumber: '' }));
     };
 
     const handleRoomNumberChange = (e) => {
@@ -621,13 +641,47 @@ export default function ParcelManagement({ user }) {
                             <form onSubmit={handleAddParcel} className="space-y-4">
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-bold text-brand-gray-400 block ml-1"><span className="text-red-500">*</span> ห้องพัก</label>
-                                    <input 
-                                        type="text" required
-                                        value={formData.roomNumber}
-                                        onChange={handleRoomNumberChange}
-                                        placeholder="เช่น A01, 101"
-                                        className="w-full h-11 bg-black/20 border border-white/10 rounded-xl px-4 text-sm font-bold text-white placeholder:text-brand-gray-600 focus:border-brand-orange-500/50 outline-none transition-all"
-                                    />
+                                    <div className="flex gap-2">
+                                        {/* Floor selector */}
+                                        <div className="relative flex-1">
+                                            <select
+                                                value={selectedFloor}
+                                                onChange={handleFloorChange}
+                                                required
+                                                className="w-full h-11 bg-black/20 border border-white/10 rounded-xl px-3 pr-8 text-sm font-bold text-white appearance-none focus:border-brand-orange-500/50 outline-none transition-all cursor-pointer"
+                                                style={{ colorScheme: 'dark' }}
+                                            >
+                                                <option value="" className="bg-[#1a1a2e] text-brand-gray-500">ชั้น...</option>
+                                                {availableFloors.map(f => (
+                                                    <option key={f} value={f} className="bg-[#1a1a2e]">ชั้น {f}</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-500 pointer-events-none" />
+                                        </div>
+
+                                        {/* Room selector */}
+                                        <div className="relative flex-[1.4]">
+                                            <select
+                                                value={formData.roomNumber}
+                                                onChange={handleRoomNumberChange}
+                                                required
+                                                disabled={!selectedFloor}
+                                                className="w-full h-11 bg-black/20 border border-white/10 rounded-xl px-3 pr-8 text-sm font-bold text-white appearance-none focus:border-brand-orange-500/50 outline-none transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                                style={{ colorScheme: 'dark' }}
+                                            >
+                                                <option value="" className="bg-[#1a1a2e] text-brand-gray-500">เลือกห้อง...</option>
+                                                {roomsOnFloor
+                                                    .sort((a, b) => (a.roomNumber || '').localeCompare(b.roomNumber || '', 'th', { numeric: true }))
+                                                    .map(r => (
+                                                        <option key={r.id} value={r.roomNumber} className="bg-[#1a1a2e]">
+                                                            {r.roomNumber}{r.tenantName ? ` — ${r.tenantName}` : ''}
+                                                        </option>
+                                                    ))
+                                                }
+                                            </select>
+                                            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-500 pointer-events-none" />
+                                        </div>
+                                    </div>
                                 </div>
                                 
                                 <div className="space-y-1.5">
@@ -669,7 +723,7 @@ export default function ParcelManagement({ user }) {
 
                                 <div className="pt-4 flex gap-3">
                                     <button 
-                                        type="button" onClick={() => { setIsAddModalOpen(false); setPhotoPreviews([]); setPhotoFiles([]); }}
+                                        type="button" onClick={() => { setIsAddModalOpen(false); setPhotoPreviews([]); setPhotoFiles([]); setSelectedFloor(''); setFormData({ roomNumber: '', remark: '' }); }}
                                         className="flex-1 h-11 bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold text-sm transition-all"
                                     >
                                         ยกเลิก

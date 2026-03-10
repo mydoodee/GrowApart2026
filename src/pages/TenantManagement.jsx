@@ -334,7 +334,7 @@ export default function TenantManagement({ user }) {
             // update local state
             const updatedTenant = { ...selectedTenant, vehicles };
             setSelectedTenant(updatedTenant);
-            
+
             // update in tenants array
             setTenants(prev => prev.map(t => t.id === updatedTenant.id ? { ...t, vehicles } : t));
 
@@ -451,48 +451,71 @@ export default function TenantManagement({ user }) {
             <div className="px-3 sm:px-5 py-3 max-w-[1600px] mx-auto w-full">
 
                 {/* ── Stats Bar ─────────────────────────────── */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
                     {[
-                        { id: 'all', label: 'ผู้เช่าทั้งหมด', val: occupiedCount, icon: <Users />, color: 'text-blue-400', iconBg: 'bg-blue-500/10' },
-                        { id: 'จ่ายแล้ว', label: 'จ่ายแล้ว', val: paidCount, icon: <CheckCircle2 />, color: 'text-emerald-400', iconBg: 'bg-emerald-500/10' },
-                        { id: 'ค้างชำระ', label: 'ค้างชำระ', val: overdueCount, icon: <AlertCircle />, color: 'text-red-400', iconBg: 'bg-red-500/10' },
-                        { id: 'รอชำระ', label: 'รอชำระ', val: pendingCount, icon: <Clock />, color: 'text-amber-400', iconBg: 'bg-amber-500/10' },
-                    ].map((s, i) => (
+                        { id: 'all', label: 'ผู้เช่าทั้งหมด', val: occupiedCount, icon: <Users className="w-4 h-4" />, color: 'text-blue-400', iconBg: 'bg-blue-500/10' },
+                        { id: 'จ่ายแล้ว', label: 'จ่ายแล้ว', val: paidCount, icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-emerald-400', iconBg: 'bg-emerald-500/10' },
+                        { id: 'ค้างชำระ', label: 'ค้างชำระ', val: overdueCount, icon: <AlertCircle className="w-4 h-4" />, color: 'text-red-400', iconBg: 'bg-red-500/10' },
+                        { id: 'รอชำระ', label: 'รอชำระ', val: pendingCount, icon: <Clock className="w-4 h-4" />, color: 'text-amber-400', iconBg: 'bg-amber-500/10' },
+                    ].map((s) => (
                         <button
-                            key={i}
-                            onClick={() => setFilterStatus(s.id)}
-                            className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${filterStatus === s.id ? 'bg-brand-card/80 border-brand-orange-500/50 shadow-lg shadow-brand-orange-500/10' : 'bg-brand-card/40 border-white/8 hover:border-white/20'}`}
+                            key={s.id}
+                            onClick={() => setFilterStatus(prev => prev === s.id ? 'all' : s.id)}
+                            className={`relative overflow-hidden transition-all duration-300 px-3 py-2 rounded-xl border text-left active:scale-[0.98] group ${filterStatus === s.id
+                                ? 'bg-brand-card shadow-2xl border-brand-orange-500/50 -translate-y-0.5'
+                                : 'bg-brand-card/30 hover:bg-brand-card/50 border-white/5 hover:border-white/10'
+                                }`}
                         >
-                            <div className={`w-8 h-8 rounded-xl ${s.iconBg} flex items-center justify-center shrink-0 ${s.color}`}>
-                                {React.cloneElement(s.icon, { size: 16 })}
+                            <div className="flex items-center gap-2.5 relative z-10">
+                                <div className={`w-8 h-8 rounded-lg ${s.iconBg} ${s.color} flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform duration-500`}>
+                                    {s.icon}
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-[9px] font-black text-zinc-500 uppercase tracking-tighter truncate opacity-70 mb-0.5">{s.label}</p>
+                                    <div className="flex items-baseline gap-0.5">
+                                        <span className={`text-base font-black tracking-tight ${filterStatus === s.id ? 'text-white' : s.color}`}>{s.val}</span>
+                                        <span className="text-[9px] font-bold text-zinc-600">คน</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="flex flex-col items-start min-w-0">
-                                <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest leading-none mb-1">{s.label}</p>
-                                <p className="text-sm font-black text-white leading-none">
-                                    {s.val} <span className="text-[10px] font-bold text-brand-gray-600">คน</span>
-                                </p>
-                            </div>
+                            {filterStatus === s.id && (
+                                <div className="absolute top-0 right-0 w-6 h-6 bg-brand-orange-500/10 blur-lg rounded-full -mr-2 -mt-2 animate-pulse" />
+                            )}
                         </button>
                     ))}
                 </div>
 
                 {/* ── Payment progress ─────────────────────────── */}
                 {/* ── Payment progress ─────────────────────────── */}
-                <div className="mb-4 bg-brand-card/40 border border-white/8 rounded-2xl px-5 py-3 flex items-center gap-4">
-                    <span className="text-[10px] text-brand-gray-500 uppercase tracking-widest font-bold shrink-0">การชำระเงินเดือนนี้</span>
-                    <div className="flex-1 h-2 bg-zinc-800/50 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-700 shadow-[0_0_12px_rgba(16,185,129,0.3)]" style={{ width: `${paymentProgress}%` }} />
+                {/* ── Payment progress ─────────────────────────── */}
+                <div className="mb-4 bg-brand-card/30 backdrop-blur-md border border-white/5 rounded-2xl p-2.5 flex items-center gap-3 group">
+                    <div className="flex flex-col">
+                        <span className="text-[9px] text-zinc-500 uppercase tracking-widest font-black shrink-0 flex items-center gap-1.5">
+                            <CreditCard className="w-2.5 h-2.5 text-emerald-500" /> การชำระเงินเดือนนี้
+                        </span>
+                        <span className="text-base font-black text-emerald-400 leading-none mt-0.5">{paymentProgress}%</span>
                     </div>
-                    <span className="text-xs font-black text-emerald-400 shrink-0">{paymentProgress}%</span>
+                    <div className="flex-1 h-2 bg-zinc-800/50 rounded-full overflow-hidden p-[1px] border border-white/5">
+                        <div
+                            className="h-full bg-gradient-to-r from-emerald-600 via-emerald-400 to-teal-400 rounded-full transition-all duration-1000 ease-out relative shadow-[0_0_10px_rgba(16,185,129,0.2)]"
+                            style={{ width: `${paymentProgress}%` }}
+                        >
+                            <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="hidden sm:flex flex-col items-end shrink-0">
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase">{paidCount} / {occupiedCount}</span>
+                        <span className="text-[8px] text-zinc-600 font-medium">จ่ายแล้ว</span>
+                    </div>
                 </div>
 
                 {/* ── Toolbar ──────────────────────────────────────── */}
                 <div className="flex flex-col sm:flex-row gap-3 mb-4 items-stretch sm:items-center">
-                    <div className="flex gap-1 bg-brand-card/50 border border-white/8 rounded-xl p-1 overflow-x-auto custom-scrollbar shrink-0">
+                    <div className="flex gap-1 bg-brand-card/30 backdrop-blur-md border border-white/5 rounded-xl p-1 overflow-x-auto custom-scrollbar shrink-0">
                         {['all', ...floorsList].map(f => (
                             <button
                                 key={f} onClick={() => setFilterFloor(f.toString())}
-                                className={`px-4 py-2 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${filterFloor === f.toString() ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-400 hover:text-white hover:bg-white/5'}`}
+                                className={`px-4 py-2 rounded-lg text-[11px] font-black transition-all whitespace-nowrap ${filterFloor === f.toString() ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
                             >
                                 {f === 'all' ? 'ทุกชั้น' : `ชั้น ${f}`}
                             </button>
@@ -500,38 +523,38 @@ export default function TenantManagement({ user }) {
                     </div>
 
                     <div className="relative flex-1 group">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-500 group-focus-within:text-brand-orange-500 transition-colors" />
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 group-focus-within:text-brand-orange-500 transition-colors" />
                         <input
                             type="text" value={search} onChange={e => setSearch(e.target.value)}
                             placeholder="ค้นหาชื่อ, ห้อง, เบอร์โทร..."
-                            className="w-full h-10 bg-brand-card/50 border border-white/8 rounded-xl pl-10 pr-10 text-xs font-bold text-white placeholder:text-brand-gray-600 outline-none focus:border-brand-orange-500/50 transition-all"
+                            className="w-full h-10 bg-brand-card/30 backdrop-blur-md border border-white/5 rounded-xl pl-10 pr-10 text-xs font-bold text-white placeholder:text-zinc-700 outline-none focus:border-brand-orange-500/50 transition-all"
                         />
-                        {search && <button onClick={() => setSearch('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-brand-gray-500 hover:text-white transition-colors"><X className="w-3.5 h-3.5" /></button>}
+                        {search && <button onClick={() => setSearch('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"><X className="w-3.5 h-3.5" /></button>}
                     </div>
 
-                    <div className="flex bg-brand-card/50 border border-white/8 p-1 rounded-xl shrink-0">
+                    <div className="flex bg-brand-card/30 backdrop-blur-md border border-white/5 p-1 rounded-xl shrink-0">
                         <button
                             onClick={() => handleTabChange('datagrid')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all ${viewTab === 'datagrid' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-400 hover:text-white whitespace-nowrap'}`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-black transition-all ${viewTab === 'datagrid' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-zinc-500 hover:text-white whitespace-nowrap'}`}
                         >
                             <List className="w-3.5 h-3.5" /> รายการ
                         </button>
                         <button
                             onClick={() => handleTabChange('cards')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all ${viewTab === 'cards' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-400 hover:text-white whitespace-nowrap'}`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-black transition-all ${viewTab === 'cards' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-zinc-500 hover:text-white whitespace-nowrap'}`}
                         >
                             <LayoutGrid className="w-3.5 h-3.5" /> การ์ด
                         </button>
                         <button
                             onClick={() => handleTabChange('history')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold transition-all ${viewTab === 'history' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-400 hover:text-white whitespace-nowrap'}`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-black transition-all ${viewTab === 'history' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-zinc-500 hover:text-white whitespace-nowrap'}`}
                         >
                             <Clock className="w-3.5 h-3.5" /> ประวัติบิล
                         </button>
                     </div>
 
                     {activeAptId && activeAptId !== 'all' && (
-                        <button onClick={() => setShowQRModal(true)} className="h-10 px-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-[11px] font-bold transition-all flex items-center gap-2 whitespace-nowrap shadow-lg shadow-emerald-500/5">
+                        <button onClick={() => setShowQRModal(true)} className="h-10 px-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-[11px] font-black transition-all flex items-center gap-2 whitespace-nowrap shadow-lg shadow-emerald-500/5">
                             <QrCodeIcon className="w-3.5 h-3.5" /> QR เข้าร่วม
                         </button>
                     )}
@@ -556,24 +579,24 @@ export default function TenantManagement({ user }) {
                             if (viewTab === 'history') return null; // History handled below
                             if (filteredRooms.length === 0) {
                                 return (
-                                    <div className="text-center py-20 bg-brand-card/40 border border-white/8 rounded-3xl">
-                                        <Users className="w-10 h-10 text-brand-gray-700 mx-auto mb-3 opacity-20" />
-                                        <p className="text-brand-gray-500 font-bold text-sm">ไม่พบข้อมูลผู้เช่า</p>
+                                    <div className="text-center py-20 bg-brand-card/30 backdrop-blur-md border border-white/5 rounded-3xl">
+                                        <Users className="w-10 h-10 text-zinc-700 mx-auto mb-3 opacity-20" />
+                                        <p className="text-zinc-500 font-black text-sm uppercase tracking-widest">ไม่พบข้อมูลผู้เช่า</p>
                                     </div>
                                 );
                             }
 
                             if (viewTab === 'datagrid') {
                                 return (
-                                    <div className="bg-brand-card/40 border border-white/8 rounded-3xl overflow-hidden shadow-2xl">
+                                    <div className="bg-brand-card/30 backdrop-blur-md border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
                                         <div className="overflow-x-auto custom-scrollbar">
                                             <table className="w-full text-left border-collapse">
                                                 <thead>
                                                     <tr className="bg-white/5">
-                                                        <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ผู้เช่า</th>
-                                                        <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">ห้อง</th>
-                                                        <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest hidden md:table-cell">การติดต่อ</th>
-                                                        <th className="px-6 py-4 text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest hidden sm:table-cell">สถานะชำระ</th>
+                                                        <th className="px-6 py-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">ผู้เช่า</th>
+                                                        <th className="px-6 py-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">ห้อง</th>
+                                                        <th className="px-6 py-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest hidden md:table-cell">การติดต่อ</th>
+                                                        <th className="px-6 py-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest hidden sm:table-cell">สถานะชำระ</th>
                                                         <th className="px-6 py-4 w-12"></th>
                                                     </tr>
                                                 </thead>
@@ -594,33 +617,33 @@ export default function TenantManagement({ user }) {
                                                                         setEditMotoPlate(tenant.vehicles?.motorcycle?.[0] || '');
                                                                     }
                                                                 }}
-                                                                className={`cursor-pointer transition-colors group ${isSelected ? 'bg-brand-orange-500/5' : 'hover:bg-white/[0.02]'}`}
+                                                                className={`cursor-pointer transition-colors group ${isSelected ? 'bg-brand-orange-500/10' : 'hover:bg-white/[0.02]'}`}
                                                             >
                                                                 <td className="px-6 py-4">
                                                                     <div className="flex items-center gap-3">
                                                                         <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-black text-white shrink-0 shadow-lg ${getAvatarBg(name)}`}>
                                                                             {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-xl" /> : name.charAt(0)}
                                                                         </div>
-                                                                        <span className="text-sm font-bold text-zinc-200 truncate">{name}</span>
+                                                                        <span className="text-sm font-black text-zinc-200 truncate">{name}</span>
                                                                     </div>
                                                                 </td>
                                                                 <td className="px-6 py-4">
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="text-[13px] font-black text-brand-orange-500">{room.roomNumber}</span>
-                                                                        <span className="text-[10px] font-bold text-brand-gray-500 px-2 py-0.5 bg-white/5 rounded-lg border border-white/5">ชั้น {room.floor}</span>
+                                                                        <span className="text-[10px] font-black text-zinc-500 px-2 py-0.5 bg-white/5 rounded-lg border border-white/5">ชั้น {room.floor}</span>
                                                                     </div>
                                                                 </td>
                                                                 <td className="px-6 py-4 hidden md:table-cell">
                                                                     <div className="flex flex-col gap-0.5">
-                                                                        <p className="text-xs font-bold text-brand-gray-400 flex items-center gap-1.5"><KeyRound className="w-3 h-3 text-brand-gray-500" /> {tenant.phone || '—'}</p>
-                                                                        <p className="text-[10px] font-medium text-brand-gray-500 flex items-center gap-1.5"><Clock className="w-3 h-3 text-brand-gray-600" /> {tenant.email || '—'}</p>
+                                                                        <p className="text-xs font-black text-zinc-400 flex items-center gap-1.5"><KeyRound className="w-3 h-3 text-zinc-500" /> {tenant.phone || '—'}</p>
+                                                                        <p className="text-[10px] font-bold text-zinc-600 flex items-center gap-1.5"><Clock className="w-3 h-3 text-zinc-700" /> {tenant.email || '—'}</p>
                                                                     </div>
                                                                 </td>
                                                                 <td className="px-6 py-4 hidden sm:table-cell">
                                                                     <StatusPill status={statusMap[tenant.id]} />
                                                                 </td>
                                                                 <td className="px-6 py-4 text-right">
-                                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ml-auto transition-all shadow-lg ${isSelected ? 'bg-brand-orange-500 text-brand-bg' : 'bg-white/5 text-brand-gray-500 group-hover:bg-white/10 group-hover:text-white'}`}>
+                                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ml-auto transition-all shadow-lg ${isSelected ? 'bg-brand-orange-500 text-brand-bg' : 'bg-white/5 text-zinc-500 group-hover:bg-white/10 group-hover:text-white'}`}>
                                                                         <ChevronRight className="w-4 h-4" />
                                                                     </div>
                                                                 </td>
@@ -654,14 +677,14 @@ export default function TenantManagement({ user }) {
                                                             setEditMotoPlate(tenant.vehicles?.motorcycle?.[0] || '');
                                                         }
                                                     }}
-                                                    className={`bg-brand-card/40 border rounded-3xl p-5 cursor-pointer transition-all duration-300 group ${isSelected ? 'border-brand-orange-500 shadow-xl shadow-brand-orange-500/10' : 'border-white/8 hover:border-white/20 hover:bg-white/[0.04]'}`}
+                                                    className={`bg-brand-card/30 backdrop-blur-md border rounded-3xl p-5 cursor-pointer transition-all duration-300 group ${isSelected ? 'border-brand-orange-500 shadow-xl shadow-brand-orange-500/10' : 'border-white/5 hover:border-white/10 hover:bg-white/[0.04]'}`}
                                                 >
                                                     <div className="flex items-start justify-between mb-4">
                                                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-black text-white shrink-0 shadow-lg ${getAvatarBg(name)}`}>
                                                             {tenant.photoURL ? <img src={tenant.photoURL} className="w-full h-full object-cover rounded-2xl" /> : name.charAt(0)}
                                                         </div>
                                                         <div className="text-right">
-                                                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1 block">ห้อง</span>
+                                                            <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 block">ห้อง</span>
                                                             <span className="text-lg font-black text-brand-orange-500">{room.roomNumber}</span>
                                                         </div>
                                                     </div>
@@ -669,14 +692,14 @@ export default function TenantManagement({ user }) {
                                                     <div className="space-y-1 mb-4">
                                                         <h3 className="text-sm font-black text-white truncate">{name}</h3>
                                                         <div className="flex items-center justify-between mt-1">
-                                                            <p className="text-[10px] text-brand-gray-500 flex items-center gap-1.5"><KeyRound className="w-3 h-3" /> {tenant.phone || '—'}</p>
-                                                            <span className="text-[9px] font-bold text-brand-gray-500 px-1.5 py-0.5 bg-white/5 rounded border border-white/5">ชั้น {room.floor}</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black flex items-center gap-1.5"><KeyRound className="w-3 h-3" /> {tenant.phone || '—'}</p>
+                                                            <span className="text-[9px] font-black text-zinc-600 px-1.5 py-0.5 bg-white/5 rounded border border-white/5">ชั้น {room.floor}</span>
                                                         </div>
 
                                                         {(tenant.vehicles?.car?.[0] || tenant.vehicles?.motorcycle?.[0]) && (
                                                             <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-white/5">
-                                                                {tenant.vehicles?.car?.[0] && <span className="text-[9px] font-bold text-blue-400 bg-blue-500/5 px-1.5 py-0.5 rounded border border-blue-500/10">🚗 {tenant.vehicles.car[0]}</span>}
-                                                                {tenant.vehicles?.motorcycle?.[0] && <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/5 px-1.5 py-0.5 rounded border border-emerald-500/10">🏍️ {tenant.vehicles.motorcycle[0]}</span>}
+                                                                {tenant.vehicles?.car?.[0] && <span className="text-[9px] font-black text-blue-400 bg-blue-500/5 px-1.5 py-0.5 rounded border border-blue-500/10">🚗 {tenant.vehicles.car[0]}</span>}
+                                                                {tenant.vehicles?.motorcycle?.[0] && <span className="text-[9px] font-black text-emerald-400 bg-emerald-500/5 px-1.5 py-0.5 rounded border border-emerald-500/10">🏍️ {tenant.vehicles.motorcycle[0]}</span>}
                                                             </div>
                                                         )}
                                                     </div>
@@ -883,12 +906,12 @@ export default function TenantManagement({ user }) {
                                                     </div>
                                                 </div>
                                             ))}
-                                            
+
                                             {/* Vehicle Information */}
                                             <div className="pt-3 mt-3 border-t border-white/5 space-y-3">
                                                 <div className="flex items-center justify-between mb-1">
                                                     <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">ยานพาหนะ</p>
-                                                    <button 
+                                                    <button
                                                         onClick={() => {
                                                             if (editVehicleMode) {
                                                                 handleSaveVehicles();
@@ -902,13 +925,13 @@ export default function TenantManagement({ user }) {
                                                         {vehicleSaving ? 'กำลังบันทึก...' : editVehicleMode ? 'บันทึก' : 'แก้ไข'}
                                                     </button>
                                                 </div>
-                                                
+
                                                 {editVehicleMode ? (
                                                     <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                                                         <div>
                                                             <label className="text-[10px] font-bold text-zinc-500 flex items-center gap-1.5 mb-1"><span className="text-xs">🚗</span> ทะเบียนรถยนต์</label>
-                                                            <input 
-                                                                type="text" 
+                                                            <input
+                                                                type="text"
                                                                 value={editCarPlate}
                                                                 onChange={e => setEditCarPlate(e.target.value)}
                                                                 placeholder="เช่น กก 1234 กทม."
@@ -917,8 +940,8 @@ export default function TenantManagement({ user }) {
                                                         </div>
                                                         <div>
                                                             <label className="text-[10px] font-bold text-zinc-500 flex items-center gap-1.5 mb-1"><span className="text-xs">🏍️</span> ทะเบียนรถจักรยานยนต์</label>
-                                                            <input 
-                                                                type="text" 
+                                                            <input
+                                                                type="text"
                                                                 value={editMotoPlate}
                                                                 onChange={e => setEditMotoPlate(e.target.value)}
                                                                 placeholder="เช่น 1กข 5678 กทม."
@@ -926,7 +949,7 @@ export default function TenantManagement({ user }) {
                                                             />
                                                         </div>
                                                         <div className="flex justify-end pt-1">
-                                                            <button 
+                                                            <button
                                                                 onClick={() => {
                                                                     setEditVehicleMode(false);
                                                                     setEditCarPlate(selectedTenant.vehicles?.car?.[0] || '');

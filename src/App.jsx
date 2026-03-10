@@ -28,6 +28,7 @@ import ContractManagement from './pages/ContractManagement';
 import MonthlyBilling from './pages/MonthlyBilling';
 import CompleteProfile from './pages/CompleteProfile';
 import ParcelManagement from './pages/ParcelManagement';
+import BookingManagement from './pages/BookingManagement';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ user, userRole, userData, allowedContext, allowedRoles, children }) => {
@@ -93,7 +94,7 @@ function App() {
         const uData = docSnap.data();
         setUserData(uData);
         if (!uData) return;
-        
+
         let finalRole = uData.role || "owner";
 
         // Override with apartment-specific role if possible
@@ -219,15 +220,17 @@ function App() {
           }
         />
 
-        <Route
-          path="/parcels"
-          element={
-            <ProtectedRoute user={user} userRole={userRole} userData={userData} allowedContext="provider">
-              <ParcelManagement user={user} />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/parcels" element={
+          <ProtectedRoute user={user} userRole={userRole} userData={userData} allowedContext="provider">
+            <ParcelManagement user={user} />
+          </ProtectedRoute>
+        } />
 
+        <Route path="/bookings" element={
+          <ProtectedRoute user={user} userRole={userRole} userData={userData} allowedContext="provider">
+            <BookingManagement user={user} />
+          </ProtectedRoute>
+        } />
         <Route path="/tenant-history" element={
           <ProtectedRoute user={user} userRole={userRole} userData={userData}>
             <TenantHistory user={user} />
@@ -261,13 +264,13 @@ function App() {
           }
         />
 
-        <Route 
-          path="/complete-profile" 
+        <Route
+          path="/complete-profile"
           element={
             <ProtectedRoute user={user} userRole={userRole} userData={userData}>
               <CompleteProfile user={user} />
             </ProtectedRoute>
-          } 
+          }
         />
 
         {/* Join Routes */}
