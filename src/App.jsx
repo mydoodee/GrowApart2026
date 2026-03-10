@@ -27,6 +27,7 @@ import MeterCollection from './pages/MeterCollection';
 import ContractManagement from './pages/ContractManagement';
 import MonthlyBilling from './pages/MonthlyBilling';
 import CompleteProfile from './pages/CompleteProfile';
+import ParcelManagement from './pages/ParcelManagement';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ user, userRole, userData, allowedContext, allowedRoles, children }) => {
@@ -214,6 +215,15 @@ function App() {
           element={
             <ProtectedRoute user={user} userRole={userRole} userData={userData} allowedContext="provider">
               <TenantManagement user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/parcels"
+          element={
+            <ProtectedRoute user={user} userRole={userRole} userData={userData} allowedContext="provider">
+              <ParcelManagement user={user} />
             </ProtectedRoute>
           }
         />

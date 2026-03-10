@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import {
     doc, getDoc, updateDoc, serverTimestamp
 } from 'firebase/firestore';

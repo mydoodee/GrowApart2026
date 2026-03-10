@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { Building, User, CheckCircle2, Loader2, Mail, Phone, Lock, Eye, EyeOff } from 'lucide-react';
 import Toast from '../components/Toast';
@@ -90,7 +90,7 @@ export default function TenantJoinGeneral({ user }) {
         };
 
         loadData();
-    }, [aptId, user]);
+    }, [aptId, user, navigate, showToast]);
 
     const submitJoinRequest = async (currentUser) => {
         try {
@@ -114,32 +114,7 @@ export default function TenantJoinGeneral({ user }) {
         setSubmitting(false);
     };
 
-    const handleGoogleAuth = async () => {
-        setSubmitting(true);
-        try {
-            const provider = new GoogleAuthProvider();
-            const result = await signInWithPopup(auth, provider);
-            const currentUser = result.user;
 
-            // Ensure user doc exists
-            const userRef = doc(db, 'users', currentUser.uid);
-            const userSnap = await getDoc(userRef);
-            if (!userSnap.exists()) {
-                await setDoc(userRef, {
-                    name: currentUser.displayName || 'ผู้เช่า',
-                    email: currentUser.email || '',
-                    role: 'tenant',
-                    createdAt: serverTimestamp()
-                });
-            }
-            localStorage.setItem('loginContext', 'tenant');
-            await submitJoinRequest(currentUser);
-        } catch (error) {
-            console.error(error);
-            showToast('ล็อกอินด้วย Google ล้มเหลว', 'error');
-            setSubmitting(false);
-        }
-    };
 
     const handleAuthAndJoin = async (e) => {
         e.preventDefault();

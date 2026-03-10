@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
     X, Camera, User, Key, LogOut, ShieldCheck,
-    AlertCircle, CheckCircle2
+    AlertCircle, CheckCircle2, Phone
 } from 'lucide-react';
 import {
     updateProfile,
@@ -11,13 +11,15 @@ import {
     signOut
 } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, storage2 } from '../firebase';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db, storage2 } from '../firebase';
 import { useNavigate } from 'react-router-dom';
 
-export default function ProfileModal({ isOpen, onClose, user, showToast }) {
+export default function ProfileModal({ isOpen, onClose, user, userData, showToast }) {
     const navigate = useNavigate();
     const [editMode, setEditMode] = useState('profile'); // 'profile' or 'password'
-    const [displayNameInput, setDisplayNameInput] = useState(user?.displayName || '');
+    const [displayNameInput, setDisplayNameInput] = useState(user?.displayName || userData?.name || '');
+    const [phoneInput, setPhoneInput] = useState(userData?.phone || '');
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -35,6 +37,7 @@ export default function ProfileModal({ isOpen, onClose, user, showToast }) {
             navigate(isTenant ? '/tenant-login' : '/login', { replace: true });
             onClose();
         } catch (error) {
+            console.error('Logout error:', error);
             showToast('เกิดข้อผิดพลาดในการออกจากระบบ', 'error');
         }
     };
@@ -74,9 +77,19 @@ export default function ProfileModal({ isOpen, onClose, user, showToast }) {
                 photoURL: photoURL
             });
 
+            // Update in Firestore as well
+            if (user?.uid) {
+                const userRef = doc(db, 'users', user.uid);
+                await updateDoc(userRef, {
+                    name: displayNameInput,
+                    phone: phoneInput,
+                    photoURL: photoURL,
+                    updatedAt: serverTimestamp()
+                });
+            }
+
             showToast('อัปเดตข้อมูลโปรไฟล์เรียบร้อยแล้ว', 'success');
             onClose();
-            // Optional: window.location.reload() or parent update if needed
         } catch (error) {
             console.error('Error updating profile:', error);
             showToast('เกิดข้อผิดพลาดในการอัปเดตโปรไฟล์', 'error');
@@ -197,16 +210,40 @@ export default function ProfileModal({ isOpen, onClose, user, showToast }) {
                                 <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest mt-6">คลิกเพื่อเปลี่ยนรูปโปรไฟล์ (ไม่เกิน 2MB)</p>
                             </div>
 
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black text-brand-orange-500 uppercase tracking-widest ml-4">ชื่อที่ต้องการแสดง</label>
-                                <input
-                                    type="text"
-                                    value={displayNameInput}
-                                    onChange={(e) => setDisplayNameInput(e.target.value)}
-                                    className="w-full bg-brand-bg/50 rounded-2xl px-6 py-4 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-sm placeholder:text-white/5"
-                                    placeholder="กรอกชื่อของคุณ..."
-                                    disabled={submitting}
-                                />
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-brand-orange-500 uppercase tracking-widest ml-4">ชื่อ - นามสกุล</label>
+                                    <div className="relative group">
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-gray-500 group-focus-within:text-brand-orange-500 transition-colors">
+                                            <User size={16} />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={displayNameInput}
+                                            onChange={(e) => setDisplayNameInput(e.target.value)}
+                                            className="w-full bg-brand-bg/50 rounded-2xl pl-11 pr-4 py-3.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-sm placeholder:text-white/20"
+                                            placeholder="กรอกชื่อของคุณ..."
+                                            disabled={submitting}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-brand-orange-500 uppercase tracking-widest ml-4">เบอร์โทรศัพท์ติดต่อ</label>
+                                    <div className="relative group">
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-gray-500 group-focus-within:text-brand-orange-500 transition-colors">
+                                            <Phone size={16} />
+                                        </div>
+                                        <input
+                                            type="tel"
+                                            value={phoneInput}
+                                            onChange={(e) => setPhoneInput(e.target.value)}
+                                            className="w-full bg-brand-bg/50 rounded-2xl pl-11 pr-4 py-3.5 border border-white/10 outline-none font-bold text-white focus:border-brand-orange-500/50 transition-all text-sm placeholder:text-white/20"
+                                            placeholder="0XXXXXXXXX"
+                                            disabled={submitting}
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     ) : (

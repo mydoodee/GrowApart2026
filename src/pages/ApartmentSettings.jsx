@@ -92,6 +92,7 @@ export default function ApartmentSettings({ user }) {
     const [approvalFloor, setApprovalFloor] = useState('');
     const [selectedFloors, setSelectedFloors] = useState({});
     const [contractInfo, setContractInfo] = useState({ pdfURL: '', template: '' });
+    // eslint-disable-next-line no-unused-vars
     const [uploadingContract, setUploadingContract] = useState(false);
 
     useEffect(() => {
@@ -182,6 +183,7 @@ export default function ApartmentSettings({ user }) {
             setLoading(false);
         }
         loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user, activeAptId, isAddMode]);
 
     useEffect(() => {
@@ -503,6 +505,7 @@ export default function ApartmentSettings({ user }) {
         }
     };
 
+    // eslint-disable-next-line no-unused-vars
     const handleContractPDFUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -1259,13 +1262,15 @@ export default function ApartmentSettings({ user }) {
                                                                                         }`}
                                                                                 >
                                                                                     <div className="flex items-center gap-3">
-                                                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-black shrink-0 transition-all ${tenant
+                                                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-black shrink-0 transition-all overflow-hidden ${tenant
                                                                                             ? isSelected
                                                                                                 ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/30'
                                                                                                 : 'bg-brand-orange-500/15 text-brand-orange-400'
                                                                                             : 'bg-white/5 text-brand-gray-600'
                                                                                             }`}>
-                                                                                            {room.roomNumber}
+                                                                                            {tenant?.photoURL ? (
+                                                                                                <img src={tenant.photoURL} className="w-full h-full object-cover" alt="" />
+                                                                                            ) : room.roomNumber}
                                                                                         </div>
                                                                                         {tenant ? (
                                                                                             <div className="min-w-0">

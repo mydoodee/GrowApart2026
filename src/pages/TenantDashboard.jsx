@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useNavigate } from 'react-router-dom';
 import { signOut, EmailAuthProvider } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, getDoc, onSnapshot, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, onSnapshot, addDoc, updateDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage2 } from '../firebase';
 import {
@@ -11,17 +11,20 @@ import {
     ArrowUpRight, Printer, History, Banknote, Receipt, Wallet, Zap, Droplets,
     FileText, Calendar, List, Download, Info, Snowflake, Fan,
     Bed, Shirt, Thermometer, Refrigerator, Tv, Wifi, LayoutGrid, Settings,
-    Clock, AlertCircle
+    Clock, AlertCircle, Package, Truck, ChevronDown, ChevronUp
 } from 'lucide-react';
 import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import ProfileModal from '../components/ProfileModal';
+
+import TenantHistory from './TenantHistory';
 
 export default function TenantDashboard({ user }) {
     const navigate = useNavigate();
     const { toast, showToast, hideToast } = useToast();
     const [loading, setLoading] = useState(true);
     const [myRooms, setMyRooms] = useState([]);
+    const [userData, setUserData] = useState(null);
     const [hasPendingRequest, setHasPendingRequest] = useState(false);
     const [historyGroups, setHistoryGroups] = useState([]);
     const [isHistoryMode, setIsHistoryMode] = useState(false);
@@ -37,7 +40,14 @@ export default function TenantDashboard({ user }) {
     const [submitting, setSubmitting] = useState(false);
     const [payments, setPayments] = useState([]);
     const [paymentsLoading, setPaymentsLoading] = useState(true);
+    const [parcels, setParcels] = useState([]);
+    // Parcel Calendar State
+    const [parcelCalYear, setParcelCalYear] = useState(new Date().getFullYear());
+    const [parcelCalMonth, setParcelCalMonth] = useState(new Date().getMonth());
+    const [parcelSelectedDate, setParcelSelectedDate] = useState(new Date().getDate());
+    const [isParcelGridOpen, setIsParcelGridOpen] = useState(false);
     const [showFirstBillModal, setShowFirstBillModal] = useState(false);
+    const [billsSubTab, setBillsSubTab] = useState('current');
     const firstBillPrintRef = useRef(null);
     const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
     const [selectedMonths, setSelectedMonths] = useState(new Set());
@@ -49,6 +59,9 @@ export default function TenantDashboard({ user }) {
 
     // Slip Upload State
     const [isUploadingSlip, setIsUploadingSlip] = useState(false);
+
+    // Parcel Image Viewer State
+    const [selectedParcelImage, setSelectedParcelImage] = useState(null);
 
     // Profile Edit State
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -73,6 +86,22 @@ export default function TenantDashboard({ user }) {
             setLoading(false);
             return;
         }
+
+        // Fetch user document from Firestore to get vehicles data
+        const userDocRef = doc(db, 'users', user.uid);
+        const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setUserData({ id: docSnap.id, ...data });
+                // Auto-sync photoURL from Auth to Firestore if missing or different
+                if (user.photoURL && user.photoURL !== data.photoURL) {
+                    updateDoc(docSnap.ref, { 
+                        photoURL: user.photoURL,
+                        updatedAt: serverTimestamp() 
+                    }).catch(err => console.error("Auto-sync photoURL failed:", err));
+                }
+            }
+        });
 
         // Check history for Option B
         const checkHistory = async () => {
@@ -204,17 +233,44 @@ export default function TenantDashboard({ user }) {
             });
         }
 
+        // 5. Listen for parcels
+        let unsubscribeParcels = null;
+        if (user?.uid) {
+            const parcelsQ = query(collection(db, 'parcels'), where('tenantId', '==', user.uid));
+            unsubscribeParcels = onSnapshot(parcelsQ, (snap) => {
+                const fetched = snap.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b)=>(b.addedAt?.seconds||0)-(a.addedAt?.seconds||0));
+                setParcels(fetched);
+            });
+        }
+
         return () => {
+            if (unsubscribeUser) unsubscribeUser();
             if (unsubscribeRooms) unsubscribeRooms();
             if (unsubscribeRequests) unsubscribeRequests();
             if (unsubscribeMaintenance) unsubscribeMaintenance();
             if (unsubscribePayments) unsubscribePayments();
+            if (unsubscribeParcels) unsubscribeParcels();
         };
     }, [user]);
 
     const handleLogout = async () => {
         await signOut(auth);
         navigate('/tenant-login', { replace: true });
+    };
+
+    const handleTenantConfirmParcel = async (parcelId) => {
+        try {
+            await updateDoc(doc(db, 'parcels', parcelId), {
+                status: 'picked_up',
+                pickedUpAt: serverTimestamp(),
+                pickedUpBy: user.uid,
+                tenantConfirmed: true
+            });
+            showToast('ยืนยันรับพัสดุเรียบร้อย', 'success');
+        } catch (error) {
+            console.error(error);
+            showToast('เกิดข้อผิดพลาดในการยืนยัน', 'error');
+        }
     };
 
     const handleSubmitMaintenance = async () => {
@@ -533,9 +589,9 @@ export default function TenantDashboard({ user }) {
     }
 
     const NavItems = [
-        { id: 'bills', icon: <Wallet className="w-5 h-5" />, label: 'บิลค่าเช่า' },
+        { id: 'bills', icon: <Wallet className="w-5 h-5" />, label: 'บิล/ประวัติ' },
         { id: 'dashboard', icon: <Building className="w-5 h-5" />, label: 'ห้องเช่า' },
-        { id: 'history', icon: <History className="w-5 h-5" />, label: 'ประวัติ' },
+        { id: 'parcels', icon: <Package className="w-5 h-5" />, label: 'พัสดุ' },
         { id: 'maintenance', icon: <Activity className="w-5 h-5" />, label: 'แจ้งซ่อม' },
         { id: 'profile', icon: <CircleUser className="w-5 h-5" />, label: 'โปรไฟล์' },
     ];
@@ -549,6 +605,7 @@ export default function TenantDashboard({ user }) {
                 isOpen={isEditModalOpen}
                 onClose={() => setIsEditModalOpen(false)}
                 user={user}
+                userData={userData}
                 showToast={showToast}
             />
 
@@ -726,23 +783,6 @@ export default function TenantDashboard({ user }) {
                                                         </div>
                                                     </div>
 
-                                                    {/* Room Amenities Section */}
-                                                    {(room.amenities && room.amenities.some(a => a.status)) && (
-                                                        <div className="space-y-3">
-                                                            <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-2">สิ่งอำนวยความสะดวกในห้อง</h3>
-                                                            <div className="grid grid-cols-2 gap-3">
-                                                                {room.amenities.filter(a => a.status).map((amenity, idx) => (
-                                                                    <div key={idx} className="bg-brand-card/20 p-4 rounded-2xl border border-white/5 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${idx * 50} ms` }}>
-                                                                        <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center text-brand-orange-400">
-                                                                            {AmenityIcons[amenity.name] || <CheckCircle2 size={18} />}
-                                                                        </div>
-                                                                        <p className="text-sm font-medium text-white/90">{amenity.name}</p>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    )}
-
                                                     {/* Fixed Services */}
                                                     <div className="space-y-3">
                                                         <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-2">ค่าบริการคงที่</h3>
@@ -769,6 +809,58 @@ export default function TenantDashboard({ user }) {
                                                             ))}
                                                         </div>
                                                     </div>
+
+                                                    {/* Vehicle Information */}
+                                                    {((userData?.vehicles?.car && userData?.vehicles?.car?.length > 0) || (userData?.vehicles?.motorcycle && userData?.vehicles?.motorcycle?.length > 0)) && (
+                                                        <div className="space-y-3">
+                                                            <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-2">ยานพาหนะของฉัน</h3>
+                                                            <div className="space-y-2">
+                                                                {userData?.vehicles?.car && userData?.vehicles?.car?.map((plate, idx) => (
+                                                                    <div key={`car-${idx}`} className="bg-brand-card/30 p-4 rounded-2xl border border-white/5 flex items-center justify-between animate-in fade-in slide-in-from-left-2 duration-300">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="w-8 h-8 bg-white/5 rounded-xl flex items-center justify-center text-brand-gray-400">
+                                                                                <span className="text-sm">🚗</span>
+                                                                            </div>
+                                                                            <p className="text-sm font-medium text-white">รถยนต์</p>
+                                                                        </div>
+                                                                        <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
+                                                                            <p className="text-sm font-bold text-white tracking-wider">{plate}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                                {userData?.vehicles?.motorcycle && userData?.vehicles?.motorcycle?.map((plate, idx) => (
+                                                                    <div key={`moto-${idx}`} className="bg-brand-card/30 p-4 rounded-2xl border border-white/5 flex items-center justify-between animate-in fade-in slide-in-from-left-2 duration-300">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="w-8 h-8 bg-white/5 rounded-xl flex items-center justify-center text-brand-gray-400">
+                                                                                <span className="text-sm">🏍️</span>
+                                                                            </div>
+                                                                            <p className="text-sm font-medium text-white">รถจักรยานยนต์</p>
+                                                                        </div>
+                                                                        <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
+                                                                            <p className="text-sm font-bold text-white tracking-wider">{plate}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Room Amenities Section */}
+                                                    {(room.amenities && room.amenities.some(a => a.status)) && (
+                                                        <div className="space-y-3">
+                                                            <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-2">สิ่งอำนวยความสะดวกในห้อง</h3>
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                {room.amenities.filter(a => a.status).map((amenity, idx) => (
+                                                                    <div key={idx} className="bg-brand-card/20 p-4 rounded-2xl border border-white/5 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${idx * 50} ms` }}>
+                                                                        <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center text-brand-orange-400">
+                                                                            {AmenityIcons[amenity.name] || <CheckCircle2 size={18} />}
+                                                                        </div>
+                                                                        <p className="text-sm font-medium text-white/90">{amenity.name}</p>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -834,7 +926,250 @@ export default function TenantDashboard({ user }) {
                     </div>
                 )}
 
-                {activeTab === 'bills' && (() => {
+                {activeTab === 'parcels' && (() => {
+                    const parcelsInMonth = parcels.filter(p => {
+                        if (!p.addedAt) return false;
+                        const date = p.addedAt.toDate();
+                        return date.getFullYear() === parcelCalYear && date.getMonth() === parcelCalMonth;
+                    });
+
+                    const parcelsByDate = {};
+                    parcelsInMonth.forEach(p => {
+                        const date = p.addedAt.toDate().getDate();
+                        if (!parcelsByDate[date]) parcelsByDate[date] = [];
+                        parcelsByDate[date].push(p);
+                    });
+
+                    const selectedDateParcels = parcelSelectedDate ? (parcelsByDate[parcelSelectedDate] || []) : parcelsInMonth;
+
+                    const daysInMonth = new Date(parcelCalYear, parcelCalMonth + 1, 0).getDate();
+                    const firstDay = new Date(parcelCalYear, parcelCalMonth, 1).getDay();
+                    const thMonthsFull = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+                    const thDays = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+
+                    return (
+                        <div className="space-y-6 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
+                            <div className="flex items-center justify-between mb-2">
+                                <div>
+                                    <h1 className="text-2xl font-bold text-white leading-tight">พัสดุของฉัน</h1>
+                                    <p className="text-brand-gray-500 font-medium text-xs uppercase tracking-wider mt-1">My Parcels</p>
+                                </div>
+                                <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500">
+                                    <Package size={24} />
+                                </div>
+                            </div>
+
+                            {/* ── Mobile-First Premium Calendar ─────────────────────────── */}
+                            <div className="relative mb-6 animate-in fade-in duration-700">
+                                {/* Header: Month/Year & Select Grid Toggle */}
+                                <div className="flex items-center justify-between mb-4 px-1">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="flex items-center bg-white/5 backdrop-blur-md p-1 rounded-2xl border border-white/5">
+                                            <button
+                                                onClick={() => {
+                                                    if (parcelCalMonth === 0) { setParcelCalMonth(11); setParcelCalYear(y => y - 1); }
+                                                    else { setParcelCalMonth(m => m - 1); }
+                                                    setParcelSelectedDate(null);
+                                                }}
+                                                className="p-1 px-2 hover:bg-white/10 rounded-xl transition-colors text-brand-gray-400 active:scale-90"
+                                            >
+                                                <ChevronLeft size={14} />
+                                            </button>
+                                            <div className="px-1 min-w-[90px] text-center">
+                                                <h3 className="text-[11px] font-black text-white uppercase tracking-tighter">{thMonthsFull[parcelCalMonth].substring(0, 3)} {parcelCalYear + 543}</h3>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    if (parcelCalMonth === 11) { setParcelCalMonth(0); setParcelCalYear(y => y + 1); }
+                                                    else { setParcelCalMonth(m => m + 1); }
+                                                    setParcelSelectedDate(null);
+                                                }}
+                                                className="p-1 px-2 hover:bg-white/10 rounded-xl transition-colors text-brand-gray-400 active:scale-90"
+                                            >
+                                                <ChevronRight size={14} />
+                                            </button>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                const now = new Date();
+                                                setParcelCalMonth(now.getMonth());
+                                                setParcelCalYear(now.getFullYear());
+                                                setParcelSelectedDate(now.getDate());
+                                            }}
+                                            className="h-8 px-4 bg-brand-orange-500/10 hover:bg-brand-orange-500/20 text-brand-orange-500 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-brand-orange-500/20 active:scale-90 flex items-center justify-center"
+                                        >
+                                            วันนี้
+                                        </button>
+                                    </div>
+
+                                    <button
+                                        onClick={() => setIsParcelGridOpen(!isParcelGridOpen)}
+                                        className={`w-9 h-9 flex items-center justify-center rounded-2xl border transition-all active:scale-90 relative z-40
+                                            ${isParcelGridOpen ? 'bg-brand-orange-500 text-brand-bg border-brand-orange-500 shadow-xl' : 'bg-white/5 text-white/40 border-white/5 hover:bg-white/10'}
+                                        `}
+                                    >
+                                        <Calendar size={18} />
+                                    </button>
+                                </div>
+
+                                {/* Floating Mini-Calendar Popover */}
+                                {isParcelGridOpen && (
+                                    <>
+                                        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] animate-in fade-in duration-300" onClick={() => setIsParcelGridOpen(false)} />
+                                        <div className="absolute top-12 right-0 w-[240px] bg-brand-card/90 backdrop-blur-2xl border border-white/10 rounded-[2rem] shadow-2xl p-4 z-[101] animate-in zoom-in-95 fade-in duration-300 origin-top-right">
+                                            <div className="grid grid-cols-7 gap-1">
+                                                {thDays.map(day => (
+                                                    <div key={day} className="text-center text-[8px] font-black text-white/30 uppercase py-1">
+                                                        {day}
+                                                    </div>
+                                                ))}
+                                                {Array.from({ length: firstDay }).map((_, i) => (
+                                                    <div key={`empty-${i}`} className="p-1"></div>
+                                                ))}
+                                                {Array.from({ length: daysInMonth }).map((_, i) => {
+                                                    const d = i + 1;
+                                                    const dParcels = parcelsByDate[d] || [];
+                                                    const dSelected = parcelSelectedDate === d;
+                                                    const dToday = new Date().getDate() === d && new Date().getMonth() === parcelCalMonth && new Date().getFullYear() === parcelCalYear;
+
+                                                    return (
+                                                        <button
+                                                            key={d}
+                                                            onClick={() => { setParcelSelectedDate(d); setIsParcelGridOpen(false); }}
+                                                            className={`relative flex flex-col items-center justify-center h-8 rounded-xl border transition-all active:scale-75
+                                                                ${dSelected ? 'bg-brand-orange-500 text-brand-bg border-brand-orange-500 shadow-lg' :
+                                                                dToday ? 'bg-brand-orange-500/10 border-brand-orange-500/40 text-brand-orange-500' :
+                                                                'bg-white/5 border-white/5 text-white/60 hover:bg-white/10'}
+                                                            `}
+                                                        >
+                                                            <span className="text-[10px] font-bold">{d}</span>
+                                                            {dParcels.length > 0 && (
+                                                                <div className={`absolute bottom-1 w-1 h-1 rounded-full ${dSelected ? 'bg-brand-bg/40' : 'bg-brand-orange-500'}`}></div>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Parcels List for Selected Date or Month */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between px-1">
+                                    <h3 className="text-xs font-bold text-brand-gray-300 uppercase tracking-widest">
+                                        {parcelSelectedDate ? `พัสดุวันที่ ${parcelSelectedDate} ${thMonthsFull[parcelCalMonth]}` : 'พัสดุทั้งหมดในเดือนนี้'}
+                                    </h3>
+                                    <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full font-bold text-brand-gray-400">{selectedDateParcels.length} รายการ</span>
+                                </div>
+
+                                {selectedDateParcels.length === 0 ? (
+                                    <div className="bg-brand-card/50 p-8 rounded-2xl text-center border border-white/5 backdrop-blur-sm">
+                                        <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4 text-brand-gray-600">
+                                            <Package size={24} />
+                                        </div>
+                                        <p className="text-sm font-bold text-white mb-1">ไม่พบพัสดุ</p>
+                                        <p className="text-[10px] text-brand-gray-500">{parcelSelectedDate ? 'ไม่มีพัสดุที่รับเข้าในวันที่คุณเลือก' : 'ไม่มีพัสดุในเดือนนี้'}</p>
+                                    </div>
+                                ) : (
+                                    selectedDateParcels.map(parcel => (
+                                        <div key={parcel.id} className="bg-brand-card/40 border border-white/8 rounded-2xl p-5 hover:border-brand-orange-500/30 transition-all group">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-lg ${parcel.status === 'pending' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                                                        <Package className="w-6 h-6" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-bold text-brand-gray-500 tracking-widest uppercase mb-1">ส่งถึง</p>
+                                                        <p className="text-base font-black text-white leading-none">{parcel.recipientName}</p>
+                                                    </div>
+                                                </div>
+                                                {parcel.status === 'pending' ? (
+                                                    <span className="px-2.5 py-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg text-[10px] font-black tracking-widest uppercase shadow-lg shadow-amber-500/5">
+                                                        รอรับพัสดุ
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-2.5 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg text-[10px] font-black tracking-widest uppercase shadow-lg shadow-emerald-500/5 flex items-center gap-1">
+                                                        <CheckCircle2 className="w-3 h-3" /> รับแล้ว
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="space-y-2 bg-white/[0.02] rounded-xl p-3 border border-white/5">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[11px] font-bold text-brand-gray-500">ขนส่ง:</span>
+                                                    <span className="text-xs font-bold text-white flex items-center gap-1.5"><Truck className="w-3.5 h-3.5 text-brand-gray-400" /> {parcel.carrier}</span>
+                                                </div>
+                                                {parcel.trackingNumber && (
+                                                    <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                                                        <span className="text-[11px] font-bold text-brand-gray-500">เลขพัสดุ:</span>
+                                                        <span className="text-xs font-mono font-bold text-brand-orange-400">{parcel.trackingNumber}</span>
+                                                    </div>
+                                                )}
+                                                <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                                                    <span className="text-[11px] font-bold text-brand-gray-500">วันถึงพัสดุ:</span>
+                                                    <span className="text-[11px] font-medium text-brand-gray-400">{parcel.addedAt?.toDate ? parcel.addedAt.toDate().toLocaleString('th-TH') : '-'}</span>
+                                                </div>
+                                                {parcel.status === 'picked_up' && parcel.pickedUpAt && (
+                                                    <div className="flex justify-between items-center pt-2 border-t border-emerald-500/10">
+                                                        <span className="text-[11px] font-bold text-emerald-500/60">รับเมื่อ:</span>
+                                                        <span className="text-[11px] font-medium text-emerald-500">{parcel.pickedUpAt.toDate().toLocaleString('th-TH')}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Parcel Photos */}
+                                            {((parcel.photoUrls && parcel.photoUrls.length > 0) || parcel.photoUrl) && (
+                                                <div className="flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10 no-scrollbar">
+                                                    {(parcel.photoUrls || [parcel.photoUrl]).filter(url => !!url).map((url, idx) => (
+                                                        <div 
+                                                            key={idx} 
+                                                            className="w-40 h-28 rounded-xl overflow-hidden border border-white/5 shrink-0 bg-black/20 cursor-pointer hover:border-brand-orange-500/50 transition-all hover:scale-[1.02]"
+                                                            onClick={() => setSelectedParcelImage(url)}
+                                                        >
+                                                            <img src={url} alt={`Parcel ${idx + 1}`} className="w-full h-full object-cover" />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {parcel.status === 'pending' && (
+                                                <button
+                                                    onClick={() => handleTenantConfirmParcel(parcel.id)}
+                                                    className="w-full mt-3 py-2.5 bg-brand-orange-500 hover:bg-brand-orange-400 text-brand-bg rounded-xl text-[11px] font-bold transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                                                >
+                                                    <CheckCircle2 className="w-4 h-4" /> ยืนยันว่าได้รับพัสดุแล้ว
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {activeTab === 'bills' && (
+                    <div className="space-y-6 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
+                        {/* Integrated Toggle for Bills and History */}
+                        <div className="flex items-center gap-1 bg-brand-card/50 p-1.5 rounded-2xl border border-white/5 mb-2">
+                            <button
+                                onClick={() => setBillsSubTab('current')}
+                                className={`flex-1 py-3.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${billsSubTab === 'current' ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-500 hover:text-white hover:bg-white/5'}`}
+                            >
+                                <Wallet className="w-4 h-4" /> บิลค่าเช่า
+                            </button>
+                            <button
+                                onClick={() => setBillsSubTab('history')}
+                                className={`flex-1 py-3.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${billsSubTab === 'history' ? 'bg-brand-orange-500 text-brand-bg shadow-lg shadow-brand-orange-500/20' : 'text-brand-gray-500 hover:text-white hover:bg-white/5'}`}
+                            >
+                                <History className="w-4 h-4" /> ประวัติการเช่า
+                            </button>
+                        </div>
+
+                        {billsSubTab === 'history' ? (
+                            <TenantHistory user={user} isEmbedded={true} />
+                        ) : (() => {
                     const room = myRooms[0];
                     const apt = room ? apartmentDetails[room.apartmentId] : null;
                     const firstBillPaid = room?.firstBillPaid;
@@ -850,8 +1185,21 @@ export default function TenantDashboard({ user }) {
                     // Build map: monthKey -> payment
                     const paymentMap = {};
                     payments.forEach(p => {
+                        let normalizedStatus = p.status;
+                        if (p.type === 'first_bill' && room?.firstBillPaid) {
+                            normalizedStatus = 'paid';
+                        }
+
                         if (p.month && p.type !== 'first_bill') {
-                            paymentMap[p.month] = p;
+                            paymentMap[p.month] = { ...p, status: normalizedStatus };
+                        } else if (p.type === 'first_bill') {
+                            const date = p.paidAt?.toDate ? p.paidAt.toDate() : (p.createdAt?.toDate ? p.createdAt.toDate() : null);
+                            if (date) {
+                                const mKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                                if (!paymentMap[mKey]) {
+                                    paymentMap[mKey] = { ...p, status: normalizedStatus };
+                                }
+                            }
                         }
                     });
 
@@ -888,17 +1236,7 @@ export default function TenantDashboard({ user }) {
                     }, 0);
 
                     return (
-                        <div className="space-y-6 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h1 className="text-2xl font-bold text-white leading-tight">บิลค่าเช่า</h1>
-                                    <p className="text-brand-gray-500 font-medium text-xs uppercase tracking-wider mt-1">Billing & Payment history</p>
-                                </div>
-                                <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-500">
-                                    <Wallet size={24} />
-                                </div>
-                            </div>
-
+                        <div className="space-y-6">
 
                             {/* Yearly / Selected Summary Card */}
                             <div className={`rounded-2xl border p-4 transition-all ${selectedMonths.size > 0 ? 'bg-brand-orange-500/5 border-brand-orange-500/20 shadow-xl shadow-brand-orange-500/5' : 'bg-brand-card/40 border-white/8'}`}>
@@ -970,7 +1308,10 @@ export default function TenantDashboard({ user }) {
                                                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
                                                 <span className="text-[9px] font-medium text-brand-gray-500">
                                                     จ่ายแล้ว {(selectedMonths.size > 0
-                                                        ? [...selectedMonths].filter(mk => paymentMap[mk]?.status === 'paid').reduce((s, mk) => s + (paymentMap[mk]?.amount || 0), 0)
+                                                        ? [...selectedMonths].filter(mk => {
+                                                            const p = paymentMap[mk];
+                                                            return p?.status === 'paid' || p?.paidAt;
+                                                        }).reduce((s, mk) => s + (paymentMap[mk]?.amount || 0), 0)
                                                         : yearPaidTotal
                                                     ).toLocaleString()} บ.
                                                 </span>
@@ -1105,7 +1446,7 @@ export default function TenantDashboard({ user }) {
                             </div>
 
                             {billDisplayMode === 'calendar' ? (
-                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                                     {Array.from({ length: 12 }).map((_, i) => {
                                         const monthKey = `${calendarYear}-${String(i + 1).padStart(2, '0')}`;
                                         const payment = paymentMap[monthKey];
@@ -1121,7 +1462,8 @@ export default function TenantDashboard({ user }) {
                                         let glowClass = '';
 
                                         if (hasPayment) {
-                                            if (payment.status === 'paid') {
+                                            const isPaid = payment.status === 'paid' || payment.paidAt;
+                                            if (isPaid) {
                                                 statusIcon = <CheckCircle2 className="w-3.5 h-3.5" />;
                                                 statusColor = 'text-emerald-400';
                                                 bgClass = 'bg-emerald-500/[0.03] hover:bg-emerald-500/[0.08]';
@@ -1147,7 +1489,7 @@ export default function TenantDashboard({ user }) {
                                                 key={monthKey}
                                                 onClick={() => !isFuture && hasPayment && toggleMonth(monthKey)}
                                                 disabled={isFuture || !hasPayment}
-                                                className={`group relative p-4 rounded-2xl border backdrop-blur-sm transition-all duration-300 text-left 
+                                                className={`group relative p-3 rounded-xl border backdrop-blur-sm transition-all duration-300 text-left 
                                                     ${bgClass} ${borderClass} ${glowClass}
                                                     ${isCurrent ? 'ring-1 ring-brand-orange-500/30' : ''} 
                                                     ${isFuture ? 'opacity-20 grayscale cursor-default' : hasPayment ? 'cursor-pointer active:scale-95' : 'cursor-default'} 
@@ -1155,35 +1497,30 @@ export default function TenantDashboard({ user }) {
                                             >
                                                 {/* Selection indicator */}
                                                 {isSelected && (
-                                                    <div className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-brand-orange-500 flex items-center justify-center shadow-lg border-2 border-brand-bg animate-in zoom-in duration-200">
-                                                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-bg font-bold" />
+                                                    <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-brand-orange-500 flex items-center justify-center shadow-lg border-2 border-brand-bg animate-in zoom-in duration-200">
+                                                        <CheckCircle2 className="w-3 h-3 text-brand-bg font-bold" />
                                                     </div>
                                                 )}
 
-                                                {/* Status Icon/Dot */}
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <span className={`text-[9px] font-black uppercase tracking-widest ${isCurrent ? 'text-brand-orange-500' : 'text-brand-gray-500'}`}>
-                                                        {thMonths[i]}
-                                                    </span>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <h4 className={`text-xs font-bold truncate ${isCurrent ? 'text-white' : 'text-brand-gray-300'}`}>
+                                                        {thMonthsFull[i]}
+                                                    </h4>
                                                     <div className={`${statusColor} transition-transform group-hover:scale-110 duration-300`}>
                                                         {statusIcon || <div className="w-1.5 h-1.5 rounded-full bg-white/10" />}
                                                     </div>
                                                 </div>
 
-                                                <h4 className={`text-sm font-bold truncate ${isCurrent ? 'text-white' : 'text-brand-gray-300'}`}>
-                                                    {thMonthsFull[i]}
-                                                </h4>
-
                                                 {hasPayment ? (
-                                                    <div className="mt-2 flex items-baseline gap-0.5">
-                                                        <span className={`text-xs font-black ${payment.status === 'paid' ? 'text-emerald-400' : 'text-white'}`}>
+                                                    <div className="flex items-baseline gap-0.5">
+                                                        <span className={`text-[11px] font-black ${payment.status === 'paid' ? 'text-emerald-400' : 'text-white'}`}>
                                                             {payment.amount.toLocaleString()}
                                                         </span>
                                                         <span className="text-[8px] font-bold text-brand-gray-500">฿</span>
                                                     </div>
                                                 ) : (
-                                                    <div className="mt-2 h-4 flex items-center">
-                                                        <div className="w-full h-[1px] bg-white/5" />
+                                                    <div className="h-3.5 flex items-center">
+                                                        <div className="w-8 h-[1px] bg-white/5" />
                                                     </div>
                                                 )}
 
@@ -1234,28 +1571,6 @@ export default function TenantDashboard({ user }) {
                                 </div>
                             )}
 
-                            {/* First Bill Paid Status (Under History) */}
-                            {firstBillPaid && (
-                                <div className="mt-6 mb-4 animate-in fade-in slide-in-from-top-4 duration-500">
-                                    <div className="bg-emerald-500/5 rounded-2xl border border-emerald-500/15 px-5 py-4 flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
-                                                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-white">ค่าแรกเข้าชำระแล้ว</p>
-                                                <p className="text-[10px] font-medium text-emerald-400/60 uppercase tracking-wider">ชำระค่าแรกเข้าเรียบร้อย</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => setShowFirstBillModal(true)}
-                                            className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-semibold text-brand-gray-300 transition-all flex items-center gap-1.5"
-                                        >
-                                            <FileText className="w-3.5 h-3.5" /> ดูบิล
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
 
                             {/* Legend */}
                             {billDisplayMode === 'calendar' && (
@@ -1293,6 +1608,8 @@ export default function TenantDashboard({ user }) {
                         </div>
                     );
                 })()}
+                    </div>
+                )}
 
                 {
                     activeTab === 'maintenance' && (
@@ -1396,55 +1713,56 @@ export default function TenantDashboard({ user }) {
                 {
                     activeTab === 'profile' && (
                         <div className="space-y-8 pb-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
-                            <div className="text-center pt-8">
-                                <div className="w-28 h-28 bg-brand-card rounded-2xl border-2 border-brand-orange-500/20 p-1 mx-auto mb-6 relative">
-                                    <div className="w-full h-full bg-brand-bg rounded-[1.5rem] flex items-center justify-center text-white font-bold text-4xl overflow-hidden shadow-2xl uppercase">
+                            <div className="text-center pt-4">
+                                <div className="w-24 h-24 bg-brand-card rounded-2xl border-2 border-brand-orange-500/20 p-1 mx-auto mb-4 relative">
+                                    <div className="w-full h-full bg-brand-bg rounded-[1.5rem] flex items-center justify-center text-white font-semibold text-3xl overflow-hidden shadow-2xl uppercase">
                                         {user?.photoURL ? <img src={user.photoURL} alt="" /> : (user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'U')}
                                     </div>
                                     <div className="absolute bottom-2 right-2 w-8 h-8 bg-emerald-500 rounded-full border-4 border-brand-bg flex items-center justify-center">
                                         <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
                                     </div>
                                 </div>
-                                <h2 className="text-2xl font-bold text-white">{user?.displayName || user?.email?.split('@')[0] || 'User'}</h2>
-                                <p className="text-xs font-medium text-brand-orange-500 uppercase tracking-wider mt-1 mb-4">ผู้เช่า</p>
-                                <div className="inline-flex items-center gap-2 bg-white/5 px-4 py-1.5 rounded-full border border-white/5">
-                                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-                                    <span className="text-xs font-normal text-brand-gray-400">{user?.email}</span>
+                                <h2 className="text-xl font-semibold text-white tracking-wide">{userData?.name || userData?.displayName || user?.displayName || user?.email?.split('@')[0] || 'User'}</h2>
+                                <p className="text-[10px] font-normal text-brand-orange-500 uppercase tracking-widest mt-1 mb-3">ผู้เช่า</p>
+                                <div className="inline-flex items-center gap-2 bg-white/5 px-3 py-1 rounded-full border border-white/5 mb-4">
+                                    <span className="w-1 h-1 bg-emerald-500 rounded-full"></span>
+                                    <span className="text-[10px] font-normal text-brand-gray-400">{user?.email || 'ไม่มีอีเมล'}</span>
                                 </div>
+
                             </div>
 
-                            <div className="space-y-4">
-                                <h3 className="text-[10px] font-medium text-brand-gray-500 uppercase tracking-widest ml-4">ตั้งค่าบัญชี</h3>
+                            <div className="space-y-3">
+                                <h3 className="text-[9px] font-normal text-brand-gray-500 uppercase tracking-[0.2em] ml-4">ตั้งค่าบัญชี</h3>
                                 <div className="bg-brand-card/50 rounded-[1.5rem] border border-white/10 overflow-hidden divide-y divide-white/5">
                                     <button
                                         onClick={() => setIsEditModalOpen(true)}
-                                        className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-all group"
+                                        className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-all group"
                                     >
                                         <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-brand-gray-500 group-hover:text-brand-orange-500 transition-colors">
-                                                <User size={18} />
+                                            <div className="w-9 h-9 bg-white/5 rounded-[1rem] flex items-center justify-center text-brand-gray-600 group-hover:text-brand-orange-500 transition-colors">
+                                                <User size={16} />
                                             </div>
                                             <div className="text-left">
-                                                <p className="text-sm font-medium text-white">จัดการโปรไฟล์และความปลอดภัย</p>
-                                                <p className="text-xs font-normal text-brand-gray-500 mt-0.5">รูปโปรไฟล์ ชื่อ และรหัสผ่าน</p>
+                                                <p className="text-sm font-normal text-white">จัดการโปรไฟล์และความปลอดภัย</p>
+                                                <p className="text-[10px] font-normal text-brand-gray-500 mt-0.5">รูปโปรไฟล์ ชื่อ และรหัสผ่าน</p>
                                             </div>
                                         </div>
-                                        <ChevronRight size={18} className="text-brand-gray-700" />
+                                        <ChevronRight size={16} className="text-brand-gray-700" />
                                     </button>
                                     <button
                                         onClick={() => navigate('/tenant-history')}
-                                        className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-all group"
+                                        className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-all group"
                                     >
                                         <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-brand-gray-500 group-hover:text-brand-orange-500 transition-colors">
-                                                <History size={18} />
+                                            <div className="w-9 h-9 bg-white/5 rounded-[1rem] flex items-center justify-center text-brand-gray-600 group-hover:text-brand-orange-500 transition-colors">
+                                                <History size={16} />
                                             </div>
                                             <div className="text-left">
-                                                <p className="text-sm font-medium text-white">ประวัติการเช่า</p>
-                                                <p className="text-xs font-normal text-brand-gray-500 mt-0.5">รวมข้อมูลหอพักที่เคยพักและยอดชำระ</p>
+                                                <p className="text-sm font-normal text-white">ประวัติการเช่า</p>
+                                                <p className="text-[10px] font-normal text-brand-gray-500 mt-0.5">รวมข้อมูลหอพักที่เคยพักและยอดชำระ</p>
                                             </div>
                                         </div>
-                                        <ChevronRight size={18} className="text-brand-gray-700" />
+                                        <ChevronRight size={16} className="text-brand-gray-700" />
                                     </button>
                                 </div>
                             </div>
@@ -1558,31 +1876,37 @@ export default function TenantDashboard({ user }) {
             {/* Bottom Navigation Navbar */}
             <nav className="fixed bottom-0 left-0 right-0 z-[100] px-6 pb-8 pt-4 flex justify-center">
                 <div className="bg-brand-bg/80 backdrop-blur-2xl border border-white/10 rounded-2xl px-5 py-3 shadow-2xl shadow-black/40 flex items-center justify-between w-full max-w-lg">
-                    {NavItems.map(item => (
-                        <button
-                            key={item.id}
-                            onClick={() => {
-                                if (item.id === 'history') {
-                                    navigate('/tenant-history');
-                                } else {
-                                    setActiveTab(item.id);
-                                }
-                            }}
-                            className={`flex flex-col items-center gap-1.5 p-2 transition-all relative ${activeTab === item.id ? 'text-brand-orange-500' : 'text-brand-gray-600 hover:text-brand-gray-300'
-                                }`}
-                        >
-                            <div className={`p-2 rounded-2xl transition-all ${activeTab === item.id ? 'bg-brand-orange-500/20 shadow-lg shadow-brand-orange-500/10 scale-110' : ''
-                                }`}>
-                                {item.icon}
-                            </div>
-                            <span className={`text-[9px] font-medium ${activeTab === item.id ? 'opacity-100 text-brand-orange-500' : 'opacity-40'}`}>
-                                {item.label}
-                            </span>
-                            {activeTab === item.id && (
-                                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-brand-orange-500 rounded-full"></div>
-                            )}
-                        </button>
-                    ))}
+                    {NavItems.map(item => {
+                        const hasPendingParcels = item.id === 'parcels' && parcels.some(p => p.status === 'pending');
+                        return (
+                            <button
+                                key={item.id}
+                                onClick={() => {
+                                    if (item.id === 'history') {
+                                        navigate('/tenant-history');
+                                    } else {
+                                        setActiveTab(item.id);
+                                    }
+                                }}
+                                className={`flex flex-col items-center gap-1.5 p-2 transition-all relative ${activeTab === item.id ? 'text-brand-orange-500' : 'text-brand-gray-600 hover:text-brand-gray-300'
+                                    }`}
+                            >
+                                <div className={`p-2 rounded-2xl transition-all relative ${activeTab === item.id ? 'bg-brand-orange-500/20 shadow-lg shadow-brand-orange-500/10 scale-110' : ''
+                                    }`}>
+                                    {item.icon}
+                                    {hasPendingParcels && (
+                                        <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-brand-bg shadow-sm shadow-red-500/50 animate-pulse"></div>
+                                    )}
+                                </div>
+                                <span className={`text-[9px] font-medium ${activeTab === item.id ? 'opacity-100 text-brand-orange-500' : 'opacity-40'}`}>
+                                    {item.label}
+                                </span>
+                                {activeTab === item.id && (
+                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-brand-orange-500 rounded-full"></div>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
             </nav>
             {/* ── Bill Details Modal ──────────────────────── */}
@@ -1876,6 +2200,27 @@ export default function TenantDashboard({ user }) {
                     </div>
                 )
             }
+
+            {/* Parcel Image Viewer Modal */}
+            {selectedParcelImage && (
+                <div 
+                    className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
+                    onClick={() => setSelectedParcelImage(null)}
+                >
+                    <button 
+                        className="absolute top-4 right-4 md:top-6 md:right-6 w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-[111]"
+                        onClick={() => setSelectedParcelImage(null)}
+                    >
+                        <X size={24} />
+                    </button>
+                    <img 
+                        src={selectedParcelImage} 
+                        alt="Enlarged Parcel" 
+                        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200" 
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+            )}
         </div >
     );
 }

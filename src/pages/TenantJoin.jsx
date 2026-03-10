@@ -62,7 +62,7 @@ export default function TenantJoin({ user, userRole }) {
             setLoading(false);
         }
         checkData();
-    }, [aptId, roomNum, user]);
+    }, [aptId, roomNum, user, showToast]);
 
     const submitJoinRequest = async (currentUser) => {
         try {

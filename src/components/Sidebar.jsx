@@ -6,7 +6,7 @@ import { auth, db } from '../firebase';
 import SegmentedSwitcher from './SegmentedSwitcher';
 import {
     LogOut, Home, User, Settings, Building,
-    X, LayoutGrid, ClipboardList, MessageSquare, Clock, Gauge, FileText, CreditCard
+    X, LayoutGrid, ClipboardList, MessageSquare, Clock, Gauge, FileText, CreditCard, Package
 } from 'lucide-react';
 export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpen, apartments, onAptSwitch }) {
     const navigate = useNavigate();
@@ -18,7 +18,7 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
     const tab = searchParams.get('tab');
     useEffect(() => {
         if (!activeAptId || activeAptId === 'all') {
-            setRequestCount(prev => prev !== 0 ? 0 : prev);
+            setTimeout(() => setRequestCount(prev => prev !== 0 ? 0 : prev), 0);
             return;
         }
 
@@ -124,6 +124,12 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
             icon: <MessageSquare className="w-5 h-5 mr-3" />,
             path: '/settings?tab=maintenance_tab',
             active: tab === 'maintenance_tab'
+        },
+        {
+            label: 'พัสดุ',
+            icon: <Package className="w-5 h-5 mr-3" />,
+            path: '/parcels',
+            active: path === '/parcels'
         }
     ];
 
@@ -144,9 +150,10 @@ export default function Sidebar({ profile, activeAptId, isMenuOpen, setIsMenuOpe
                 fixed inset-y-0 left-0 w-52 bg-brand-card z-[100] transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:flex md:flex-col md:rounded-xl md:shadow-lg overflow-hidden
                 ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}
             `}>
-                <div className="h-12 flex items-center justify-between px-4 border-b border-white/10 md:border-none">
-                    <div className="flex items-center h-full">
-                        <img src="/logo.png" alt="Rentara Logo" className="h-6 w-auto object-contain" />
+                <div className="h-12 flex flex-shrink-0 items-center justify-between px-4 mt-2 mb-2 md:border-none">
+                    <div className="flex items-center h-full gap-2">
+                        <img src="/logo.png" alt="Rentara Logo" className="h-8 w-auto object-contain" />
+                        <span className="text-white font-bold text-lg tracking-wide">Rentara App</span>
                     </div>
                     <button onClick={() => setIsMenuOpen(false)} className="md:hidden text-white p-2">
                         <X className="w-5 h-5" />

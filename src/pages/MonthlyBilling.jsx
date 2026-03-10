@@ -49,7 +49,7 @@ export default function MonthlyBilling({ user }) {
     // --- Load Data ---
     const loadData = useCallback(async () => {
         if (!user || !activeAptId || activeAptId === 'all') {
-            setLoading(false);
+            setTimeout(() => setLoading(false), 0);
             return;
         }
         setLoading(true);
@@ -111,9 +111,9 @@ export default function MonthlyBilling({ user }) {
             showToast('โหลดข้อมูลล้มเหลว', 'error');
         }
         setLoading(false);
-    }, [user, activeAptId, monthKey]);
+    }, [user, activeAptId, monthKey, showToast]);
 
-    useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => { setTimeout(() => loadData(), 0); }, [loadData]);
 
     const handleAptSwitch = (id) => {
         localStorage.setItem('activeApartmentId', id);
@@ -202,7 +202,7 @@ export default function MonthlyBilling({ user }) {
             }, { merge: true });
 
             showToast(status === 'paid' ? 'ยืนยันการชำระเงินเรียบร้อย' : 'ปฏิเสธการชำระเงินแล้ว', 'success');
-            
+
             // If it was a first bill, update the room as well
             if (verifyingPayment.type === 'first_bill') {
                 const roomSnap = await getDocs(query(
@@ -288,7 +288,7 @@ export default function MonthlyBilling({ user }) {
     }
 
     const occupiedRooms = rooms.filter(r => r.tenantId);
-    
+
     const filteredRooms = occupiedRooms.filter(r => {
         const s = searchTerm.toLowerCase();
         return (
@@ -315,7 +315,7 @@ export default function MonthlyBilling({ user }) {
         >
             <Toast {...toast} onClose={hideToast} />
 
-            <div className="px-4 lg:px-6 py-6 max-w-5xl mx-auto w-full space-y-6">
+            <div className="px-3 sm:px-5 py-3 max-w-[1600px] mx-auto w-full space-y-4">
 
                 {/* Header Actions */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -365,7 +365,7 @@ export default function MonthlyBilling({ user }) {
                     <button
                         onClick={issueAllReady}
                         disabled={issuingAll || readyToIssue.length === 0}
-                        className="flex items-center justify-center gap-2 bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-30 text-brand-bg px-6 py-3 rounded-2xl font-bold text-sm shadow-xl shadow-brand-orange-500/20 transition-all active:scale-95"
+                        className="flex items-center justify-center gap-2 bg-brand-orange-500 hover:bg-brand-orange-400 disabled:opacity-30 text-brand-bg px-5 py-2.5 rounded-xl font-bold text-sm shadow-xl shadow-brand-orange-500/20 transition-all active:scale-95"
                     >
                         {issuingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
                         ออกบิลทั้งหมด ({readyToIssue.length})
@@ -373,21 +373,23 @@ export default function MonthlyBilling({ user }) {
 
                 </div>
 
-                {/* Summary Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {/* Summary Stats Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                     {[
-                        { label: 'ห้องที่มีผู้เช่า', value: occupiedRooms.length, icon: <User />, color: 'text-blue-400' },
-                        { label: 'เก็บมิเตอร์แล้ว', value: occupiedRooms.filter(r => (meterReadings[r.roomNumber]?.electricity && meterReadings[r.roomNumber]?.water)).length, icon: <Zap />, color: 'text-yellow-400' },
-                        { label: 'พร้อมออกบิล', value: readyToIssue.length, icon: <CheckCircle2 />, color: 'text-emerald-400' },
-                        { label: 'ออกบิลแล้ว', value: alreadyIssued.length, icon: <FileText />, color: 'text-brand-orange-400' },
-                        { label: 'ชำระแล้ว', value: paidCount, icon: <CheckCircle2 />, color: 'text-emerald-500' },
+                        { label: 'ผู้เช่ารวม', value: occupiedRooms.length, icon: <User />, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+                        { label: 'จดมิเตอร์', value: occupiedRooms.filter(r => (meterReadings[r.roomNumber]?.electricity && meterReadings[r.roomNumber]?.water)).length, icon: <Zap />, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
+                        { label: 'พร้อมบิล', value: readyToIssue.length, icon: <CheckCircle2 />, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+                        { label: 'บิลแล้ว', value: alreadyIssued.length, icon: <FileText />, color: 'text-brand-orange-400', bg: 'bg-brand-orange-500/10' },
+                        { label: 'ชำระแล้ว', value: paidCount, icon: <CheckCircle2 />, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
                     ].map((s, idx) => (
-                        <div key={idx} className="bg-brand-card/40 border border-white/8 p-4 rounded-2xl">
-                            <div className={`w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center mb-3 ${s.color}`}>
-                                {React.cloneElement(s.icon, { size: 16 })}
+                        <div key={idx} className="bg-brand-card/40 border border-white/8 p-3 rounded-2xl flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center shrink-0 ${s.color}`}>
+                                {React.cloneElement(s.icon, { size: 18 })}
                             </div>
-                            <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-wider">{s.label}</p>
-                            <p className="text-xl font-black text-white mt-1">{s.value} <span className="text-xs font-medium text-brand-gray-600">ห้อง</span></p>
+                            <div>
+                                <p className="text-[10px] font-bold text-brand-gray-500 uppercase tracking-widest">{s.label}</p>
+                                <p className="text-lg font-black text-white leading-none mt-0.5">{s.value}</p>
+                            </div>
                         </div>
                     ))}
                 </div>

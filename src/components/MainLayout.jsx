@@ -5,7 +5,8 @@ import ProfileModal from './ProfileModal';
 import Toast from './Toast';
 import { useToast } from '../hooks/useToast';
 import { Menu, Bell, Building, LogOut } from 'lucide-react';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function MainLayout({
     children,
@@ -18,6 +19,17 @@ export default function MainLayout({
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const { toast, showToast, hideToast } = useToast();
+    
+    // Auto-sync photoURL from Auth to Firestore for the current user
+    React.useEffect(() => {
+        if (auth.currentUser?.photoURL && profile && auth.currentUser.photoURL !== profile.photoURL) {
+            const userRef = doc(db, 'users', auth.currentUser.uid);
+            updateDoc(userRef, {
+                photoURL: auth.currentUser.photoURL,
+                updatedAt: serverTimestamp()
+            }).catch(err => console.error("Auto-sync photoURL failed:", err));
+        }
+    }, [profile]);
 
     return (
         <div className="min-h-screen bg-brand-bg text-brand-text flex overflow-hidden lg:p-4 text-xs sm:text-sm">

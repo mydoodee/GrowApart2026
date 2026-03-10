@@ -22,10 +22,10 @@ const normalizeStatus = (status) => {
 };
 
 const STATUS_COLORS = {
-    'ว่าง':    { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', dot: 'bg-emerald-400', badgeBg: 'bg-emerald-500/10', cardBorder: 'border-emerald-500/20', label: 'ว่าง' },
-    'ไม่ว่าง': { bg: 'bg-blue-500/10',    border: 'border-blue-500/30',    text: 'text-blue-400',    dot: 'bg-blue-400',    badgeBg: 'bg-blue-500/10',    cardBorder: 'border-blue-500/20',    label: 'ไม่ว่าง' },
-    'แจ้งซ่อม':{ bg: 'bg-red-500/10',     border: 'border-red-500/30',     text: 'text-red-400',     dot: 'bg-red-400',     badgeBg: 'bg-red-500/10',     cardBorder: 'border-red-500/20',     label: 'แจ้งซ่อม' },
-    'จอง':     { bg: 'bg-amber-500/10',   border: 'border-amber-500/30',   text: 'text-amber-400',   dot: 'bg-amber-400',   badgeBg: 'bg-amber-500/10',   cardBorder: 'border-amber-500/20',   label: 'จอง' },
+    'ว่าง': { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', dot: 'bg-emerald-400', badgeBg: 'bg-emerald-500/10', cardBorder: 'border-emerald-500/20', label: 'ว่าง' },
+    'ไม่ว่าง': { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400', dot: 'bg-blue-400', badgeBg: 'bg-blue-500/10', cardBorder: 'border-blue-500/20', label: 'ไม่ว่าง' },
+    'แจ้งซ่อม': { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400', dot: 'bg-red-400', badgeBg: 'bg-red-500/10', cardBorder: 'border-red-500/20', label: 'แจ้งซ่อม' },
+    'จอง': { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400', dot: 'bg-amber-400', badgeBg: 'bg-amber-500/10', cardBorder: 'border-amber-500/20', label: 'จอง' },
 };
 
 const getStatusStyle = (status) => {
@@ -58,11 +58,13 @@ export default function RoomManagement({ user }) {
     const [selectedRoom, setSelectedRoom] = useState(null);
 
     const [filterFloor, setFilterFloor] = useState('all');
+    const [filterStatus, setFilterStatus] = useState('all');
     const [search, setSearch] = useState('');
     const [viewTab, setViewTab] = useState(localStorage.getItem('roomViewTab') || 'datagrid');
 
     const [showAmenities, setShowAmenities] = useState(false);
-    const [showExpenses, setShowExpenses] = useState(false);
+
+
 
     const handleTabChange = (tab) => {
         setViewTab(tab);
@@ -97,6 +99,7 @@ export default function RoomManagement({ user }) {
 
         let unsubscribe;
         const loadData = async () => {
+            await Promise.resolve();
             try {
                 const apps = await getUserApartments(db, user);
                 setApartments(apps);
@@ -175,8 +178,10 @@ export default function RoomManagement({ user }) {
             const tId = searchParams.get('tenantId');
             const target = rooms.find(r => (roomNum && r.roomNumber === roomNum) || (tId && r.tenantId === tId));
             if (target) {
-                setSelectedRoom(prev => (prev?.roomNumber === target.roomNumber && prev?.apartmentId === target.apartmentId) ? prev : target);
-                if (filterFloor !== 'all' && target.floor !== parseInt(filterFloor)) setFilterFloor('all');
+                setTimeout(() => setSelectedRoom(prev => (prev?.roomNumber === target.roomNumber && prev?.apartmentId === target.apartmentId) ? prev : target), 0);
+                if (filterFloor !== 'all' && target.floor !== parseInt(filterFloor)) {
+                    setTimeout(() => setFilterFloor('all'), 0);
+                }
                 const newParams = new URLSearchParams(searchParams);
                 newParams.delete('room'); newParams.delete('tenantId');
                 setSearchParams(newParams, { replace: true });
@@ -187,7 +192,7 @@ export default function RoomManagement({ user }) {
     const handleAptSwitch = (id) => { localStorage.setItem('activeApartmentId', id); setActiveAptId(id); setSelectedRoom(null); showToast('สลับตึกเรียบร้อย'); };
     const handleRoomClick = (room) => {
         if (selectedRoom?.roomNumber === room.roomNumber && selectedRoom?.apartmentId === room.apartmentId) setSelectedRoom(null);
-        else { setSelectedRoom({ ...room }); setShowAmenities(false); setShowExpenses(false); }
+        else { setSelectedRoom({ ...room }); setShowAmenities(false); }
     };
 
     const handleSaveRoom = async () => {
@@ -210,8 +215,16 @@ export default function RoomManagement({ user }) {
     const sq = search.trim().toLowerCase();
     const filteredRooms = rooms.filter(r => {
         if (filterFloor !== 'all' && r.floor !== parseInt(filterFloor)) return false;
+
+        const normStatus = normalizeStatus(r.status);
+        if (filterStatus !== 'all') {
+            if (filterStatus === 'occupied' && normStatus !== 'ไม่ว่าง') return false;
+            if (filterStatus === 'vacant' && normStatus !== 'ว่าง') return false;
+            if (filterStatus === 'repair' && (normStatus !== 'แจ้งซ่อม' && normStatus !== 'จอง')) return false;
+        }
+
         if (!sq) return true;
-        return (r.roomNumber?.toLowerCase() || '').includes(sq) || normalizeStatus(r.status).toLowerCase().includes(sq) || (r.tenantName?.toLowerCase() || '').includes(sq);
+        return (r.roomNumber?.toLowerCase() || '').includes(sq) || normStatus.toLowerCase().includes(sq) || (r.tenantName?.toLowerCase() || '').includes(sq);
     });
 
     const occupiedCount = rooms.filter(r => normalizeStatus(r.status) === 'ไม่ว่าง').length;
@@ -237,30 +250,61 @@ export default function RoomManagement({ user }) {
                 {/* ── Stats Bar ─────────────────────────────── */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
                     {[
-                        { label: 'ทั้งหมด', val: totalRooms, icon: <Building2 className="w-4 h-4" />, color: 'text-zinc-300', iconBg: 'bg-zinc-700/50' },
-                        { label: 'มีผู้เช่า', val: occupiedCount, icon: <User className="w-4 h-4" />, color: 'text-blue-400', iconBg: 'bg-blue-500/10' },
-                        { label: 'ว่าง', val: vacantCount, icon: <DoorOpen className="w-4 h-4" />, color: 'text-emerald-400', iconBg: 'bg-emerald-500/10' },
-                        { label: 'ซ่อม/จอง', val: repairCount, icon: <Zap className="w-4 h-4" />, color: 'text-amber-400', iconBg: 'bg-amber-500/10' },
-                    ].map((s, i) => (
-                        <div key={i} className="bg-zinc-900 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-lg ${s.iconBg} ${s.color} flex items-center justify-center shrink-0`}>
-                                {s.icon}
+                        { id: 'all', label: 'ทั้งหมด', val: totalRooms, icon: <Building2 className="w-4 h-4" />, color: 'text-zinc-300', iconBg: 'bg-white/5' },
+                        { id: 'occupied', label: 'มีผู้เช่า', val: occupiedCount, icon: <User className="w-4 h-4" />, color: 'text-blue-400', iconBg: 'bg-blue-500/10' },
+                        { id: 'vacant', label: 'ว่าง', val: vacantCount, icon: <Home className="w-4 h-4" />, color: 'text-emerald-400', iconBg: 'bg-emerald-500/10' },
+                        { id: 'repair', label: 'ซ่อม/จอง', val: repairCount, icon: <Zap className="w-4 h-4" />, color: 'text-amber-400', iconBg: 'bg-amber-500/10' },
+                    ].map((s) => (
+                        <button
+                            key={s.id}
+                            onClick={() => {
+                                setFilterStatus(prev => prev === s.id ? 'all' : s.id);
+                                if (filterFloor !== 'all') setFilterFloor('all');
+                            }}
+                            className={`relative overflow-hidden transition-all duration-300 px-3 py-1.5 rounded-lg border text-left active:scale-[0.98] group ${filterStatus === s.id
+                                ? 'bg-brand-card shadow-2xl border-brand-orange-500/50 -translate-y-0.5'
+                                : 'bg-brand-card/30 hover:bg-brand-card/50 border-white/5 hover:border-white/10'
+                                }`}
+                        >
+                            <div className="flex items-center gap-2 relative z-10">
+                                <div className={`w-6 h-6 rounded-md ${s.iconBg} ${s.color} flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform duration-500`}>
+                                    {React.cloneElement(s.icon, { className: 'w-3 h-3' })}
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter truncate opacity-70 mb-0.5">{s.label}</p>
+                                    <div className="flex items-baseline gap-0.5">
+                                        <span className={`text-sm font-black tracking-tight ${filterStatus === s.id ? 'text-white' : s.color}`}>{s.val}</span>
+                                        <span className="text-[8px] font-bold text-zinc-600">ห้อง</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-[10px] text-zinc-500 font-medium leading-none mb-0.5">{s.label}</p>
-                                <span className={`text-lg font-bold ${s.color} leading-none`}>{s.val}</span>
-                            </div>
-                        </div>
+                            {filterStatus === s.id && (
+                                <div className="absolute top-0 right-0 w-6 h-6 bg-brand-orange-500/10 blur-lg rounded-full -mr-2 -mt-2 animate-pulse" />
+                            )}
+                        </button>
                     ))}
                 </div>
 
                 {/* ── Occupancy mini-bar ─────────────────────────── */}
-                <div className="mb-4 bg-zinc-900 border border-white/5 rounded-xl px-4 py-2.5 flex items-center gap-3">
-                    <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold shrink-0">การเข้าพัก</span>
-                    <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-700" style={{ width: `${occupancyRate}%` }} />
+                <div className="mb-4 bg-brand-card/30 backdrop-blur-md border border-white/5 rounded-2xl p-4 flex items-center gap-4 group">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-black shrink-0 flex items-center gap-1.5">
+                            <LayoutGrid className="w-3 h-3 text-blue-500" /> อัตราการเข้าพัก
+                        </span>
+                        <span className="text-xl font-black text-blue-400 leading-none mt-1">{occupancyRate}%</span>
                     </div>
-                    <span className="text-xs font-bold text-blue-400 shrink-0">{occupancyRate}%</span>
+                    <div className="flex-1 h-3 bg-zinc-800/50 rounded-full overflow-hidden p-[2px] border border-white/5">
+                        <div
+                            className="h-full bg-gradient-to-r from-blue-600 via-blue-400 to-emerald-400 rounded-full transition-all duration-1000 ease-out relative shadow-[0_0_10px_rgba(59,130,246,0.3)]"
+                            style={{ width: `${occupancyRate}%` }}
+                        >
+                            <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="hidden sm:flex flex-col items-end">
+                        <span className="text-[10px] text-zinc-500 font-bold uppercase">{occupiedCount} / {totalRooms}</span>
+                        <span className="text-[9px] text-zinc-600 font-medium">ห้องไม่ว่าง</span>
+                    </div>
                 </div>
 
                 {/* ── Toolbar ──────────────────────────────────────── */}
@@ -274,7 +318,7 @@ export default function RoomManagement({ user }) {
                                 className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all ${filterFloor === f.toString()
                                     ? 'bg-brand-orange-500 text-white shadow'
                                     : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                                }`}
+                                    }`}
                             >
                                 {f === 'all' ? 'ทั้งหมด' : `ชั้น ${f}`}
                             </button>
@@ -300,9 +344,9 @@ export default function RoomManagement({ user }) {
                     <div className="flex bg-zinc-900 border border-white/5 p-1 rounded-xl shrink-0">
                         <button
                             onClick={() => handleTabChange('datagrid')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${viewTab === 'datagrid' ? 'bg-brand-orange-500 text-white shadow' : 'text-zinc-400 hover:text-white'}`}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${viewTab === 'datagrid' ? 'bg-brand-orange-500 text-white shadow-lg shadow-brand-orange-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
                         >
-                            <List className="w-3.5 h-3.5" /> DataGrid
+                            <List className="w-3.5 h-3.5" /> รายการ
                         </button>
                         <button
                             onClick={() => handleTabChange('floorplan')}
@@ -322,15 +366,21 @@ export default function RoomManagement({ user }) {
                     {/* ── Content Area ───────────────────────── */}
                     <div className={`transition-all duration-300 w-full min-w-0 ${selectedRoom ? 'lg:w-[60%]' : ''}`}>
                         {filteredRooms.length === 0 ? (
-                            <div className="text-center py-16 bg-zinc-900 rounded-xl border border-dashed border-white/10">
-                                <Building2 className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-                                <p className="text-zinc-400 text-sm font-medium">ไม่พบห้องพัก</p>
-                                <p className="text-zinc-600 text-xs mt-1">ลองเปลี่ยนชั้นหรือคำค้นหา</p>
+                            <div className="text-center py-20 bg-brand-card/20 backdrop-blur-xl rounded-3xl border border-dashed border-white/10 animate-in fade-in zoom-in duration-500">
+                                <Building2 className="w-12 h-12 text-zinc-800 mx-auto mb-4 opacity-20" />
+                                <p className="text-zinc-400 text-lg font-bold tracking-tight">ไม่พบห้องพักที่ต้องการ</p>
+                                <p className="text-zinc-600 text-sm mt-1">ลองล้างตัวกรองหรือใช้คำค้นหาใหม่</p>
+                                <button
+                                    onClick={() => { setFilterFloor('all'); setFilterStatus('all'); setSearch(''); }}
+                                    className="mt-6 px-6 py-2 bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/10 rounded-xl text-xs font-bold transition-all"
+                                >
+                                    ล้างการกรองทั้งหมด
+                                </button>
                             </div>
 
                         ) : viewTab === 'datagrid' ? (
                             /* ── DataGrid Tab ─────────────────────────────── */
-                            <div className="bg-zinc-900 border border-white/5 rounded-xl overflow-hidden">
+                            <div className="bg-brand-card/40 backdrop-blur-2xl border border-white/8 rounded-3xl overflow-hidden shadow-2xl">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
                                         <thead>
@@ -427,11 +477,10 @@ export default function RoomManagement({ user }) {
                                                             key={`${room.apartmentId}_${room.roomNumber}`}
                                                             onClick={() => handleRoomClick(room)}
                                                             title={`${room.roomNumber} · ${style.label}${!isVacant && room.tenantName ? ` · ${room.tenantName}` : ''}`}
-                                                            className={`relative group rounded-lg border transition-all duration-200 text-left active:scale-95 overflow-hidden ${
-                                                                isSelected
-                                                                    ? 'border-brand-orange-500 bg-brand-orange-500/10 shadow-md shadow-brand-orange-500/10'
-                                                                    : `border-white/5 bg-zinc-900 hover:border-white/15 ${style.cardBorder}`
-                                                            }`}
+                                                            className={`relative group rounded-lg border transition-all duration-200 text-left active:scale-95 overflow-hidden ${isSelected
+                                                                ? 'border-brand-orange-500 bg-brand-orange-500/10 shadow-md shadow-brand-orange-500/10'
+                                                                : `border-white/5 bg-zinc-900 hover:border-white/15 ${style.cardBorder}`
+                                                                }`}
                                                         >
                                                             {/* Status indicator strip at top */}
                                                             <div className={`h-0.5 w-full ${style.dot} opacity-60`} />
@@ -502,12 +551,45 @@ export default function RoomManagement({ user }) {
                                     </div>
 
                                     {/* Scrollable Content */}
-                                    <div className="overflow-y-auto flex-1 divide-y divide-white/[0.04]">
+                                    <div className="overflow-y-auto flex-1 divide-y divide-white/[0.04] bg-zinc-950/20">
 
-                                        {/* Status Selector */}
-                                        <div className="px-5 py-4">
-                                            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2">สถานะห้อง</p>
-                                            <div className="grid grid-cols-2 gap-1.5">
+                                        {/* Tenant info (Top Priority) */}
+                                        <div className="px-5 py-3 bg-white/[0.02]">
+                                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-2">ผู้เช่าปัจจุบัน</p>
+                                            {selectedRoom.tenantId ? (
+                                                <button
+                                                    onClick={() => navigate(`/tenants?tenantId=${selectedRoom.tenantId}`)}
+                                                    className="w-full flex items-center gap-2.5 bg-brand-card/40 hover:bg-brand-card/60 backdrop-blur-md border border-white/8 rounded-xl p-2 transition-all text-left group/tenant shadow-xl"
+                                                >
+                                                    <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover/tenant:scale-105 transition-transform duration-500">
+                                                        <User className="w-4 h-4 text-blue-400" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <p className="text-xs font-black text-white truncate">{selectedRoom.tenantName || 'ไม่ระบุ'}</p>
+                                                            <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                                                        </div>
+                                                        <div className="flex items-center gap-1 mt-0.5">
+                                                            <CheckCircle2 className="w-2.5 h-2.5 text-blue-400" />
+                                                            <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">ยืนยันแล้ว</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center group-hover/tenant:bg-brand-orange-500 transition-all">
+                                                        <ExternalLink className="w-3 h-3 text-zinc-500 group-hover/tenant:text-white" />
+                                                    </div>
+                                                </button>
+                                            ) : (
+                                                <div className="w-full h-12 bg-zinc-900/30 border border-white/5 border-dashed rounded-xl flex items-center justify-center gap-2 text-zinc-600">
+                                                    <Home className="w-3.5 h-3.5 opacity-30" />
+                                                    <p className="text-[10px] font-bold uppercase tracking-widest italic">ยังไม่มีผู้เช่าเข้าพัก</p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Status Chip Row */}
+                                        <div className="px-5 py-3">
+                                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-2">สถานะห้อง</p>
+                                            <div className="flex flex-wrap gap-1">
                                                 {['ว่าง', 'ไม่ว่าง', 'แจ้งซ่อม', 'จอง'].map(st => {
                                                     const isActive = normalizeStatus(selectedRoom.status) === st;
                                                     const s = STATUS_COLORS[st];
@@ -515,49 +597,44 @@ export default function RoomManagement({ user }) {
                                                         <button
                                                             key={st}
                                                             onClick={() => setSelectedRoom({ ...selectedRoom, status: st })}
-                                                            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all border ${isActive
-                                                                ? `${s.bg} ${s.border} ${s.text}`
-                                                                : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10'}`}
+                                                            className={`flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${isActive
+                                                                ? `${s.bg} ${s.border} ${s.text} scale-[1.02] shadow-sm`
+                                                                : 'bg-zinc-900/40 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10'}`}
                                                         >
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                                                            {st}
+                                                            <div className={`w-1 h-1 rounded-full ${s.dot} ${isActive ? 'animate-pulse' : ''}`} />
+                                                            {st === 'แจ้งซ่อม' ? 'ซ่อม' : st}
                                                         </button>
                                                     );
                                                 })}
                                             </div>
                                         </div>
 
-                                        {/* Price */}
-                                        <div className="px-5 py-4">
-                                            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2">ค่าเช่ารายเดือน (บาท)</p>
-                                            <div className="relative">
-                                                <input
-                                                    type="number"
-                                                    value={selectedRoom.price || ''}
-                                                    onChange={(e) => setSelectedRoom({ ...selectedRoom, price: parseInt(e.target.value) || 0 })}
-                                                    className="w-full bg-zinc-900 rounded-xl px-4 py-3 border border-white/5 outline-none font-bold text-white focus:border-brand-orange-500/40 transition-all text-lg text-center"
-                                                    placeholder="0"
-                                                />
-                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 text-xs font-medium">THB</span>
-                                            </div>
-                                            {currentApt?.utilityRates && (
-                                                <div className="mt-2 grid grid-cols-2 gap-2">
-                                                    <div className="bg-zinc-900 p-2.5 rounded-lg border border-white/5 flex items-center gap-2">
-                                                        <Zap className="w-3 h-3 text-yellow-500/60" />
-                                                        <div>
-                                                            <p className="text-xs font-semibold text-white">{currentApt.utilityRates.electricity}</p>
-                                                            <p className="text-[9px] text-zinc-600">บ./หน่วย ไฟ</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="bg-zinc-900 p-2.5 rounded-lg border border-white/5 flex items-center gap-2">
-                                                        <Droplets className="w-3 h-3 text-blue-500/60" />
-                                                        <div>
-                                                            <p className="text-xs font-semibold text-white">{currentApt.utilityRates.water}</p>
-                                                            <p className="text-[9px] text-zinc-600">บ./หน่วย น้ำ</p>
-                                                        </div>
-                                                    </div>
+                                        {/* Pricing Row (Compact) */}
+                                        <div className="px-5 py-3 bg-white/[0.01]">
+                                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-2">ค่าเช่า & อัตราเลท</p>
+                                            <div className="grid grid-cols-3 gap-1.5">
+                                                <div className="bg-brand-card/30 border border-white/5 rounded-xl p-1.5 text-center">
+                                                    <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-tighter mb-0.5">ค่าเช่า</p>
+                                                    <input
+                                                        type="number"
+                                                        value={selectedRoom.price || ''}
+                                                        onChange={(e) => setSelectedRoom({ ...selectedRoom, price: parseInt(e.target.value) || 0 })}
+                                                        className="w-full bg-transparent text-center outline-none font-black text-white text-xs"
+                                                    />
                                                 </div>
-                                            )}
+                                                <div className="bg-brand-card/30 border border-white/5 rounded-xl p-1.5 text-center">
+                                                    <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-tighter mb-0.5 flex items-center justify-center gap-1">
+                                                        <Zap className="w-2 h-2 text-amber-500" /> ไฟฟ้า
+                                                    </p>
+                                                    <p className="text-xs font-black text-amber-500">{currentApt?.utilityRates?.electricity || 0}</p>
+                                                </div>
+                                                <div className="bg-brand-card/30 border border-white/5 rounded-xl p-1.5 text-center">
+                                                    <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-tighter mb-0.5 flex items-center justify-center gap-1">
+                                                        <Droplets className="w-2 h-2 text-blue-500" /> ประปา
+                                                    </p>
+                                                    <p className="text-xs font-black text-blue-500">{currentApt?.utilityRates?.water || 0}</p>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         {/* Meter Readings */}
@@ -591,65 +668,44 @@ export default function RoomManagement({ user }) {
                                             </div>
                                         </div>
 
-                                        {/* Tenant info */}
-                                        {selectedRoom.tenantId && (
-                                            <div className="px-5 py-4">
-                                                <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2">ผู้เช่า</p>
-                                                <button
-                                                    onClick={() => navigate(`/tenants?tenantId=${selectedRoom.tenantId}`)}
-                                                    className="w-full flex items-center gap-3 bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-xl p-3 transition-all text-left"
-                                                >
-                                                    <div className="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0 border border-blue-500/20">
-                                                        <User className="w-4 h-4 text-blue-400" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-semibold text-white truncate">{selectedRoom.tenantName || 'ไม่ระบุ'}</p>
-                                                        <div className="flex items-center gap-1 mt-0.5">
-                                                            <CheckCircle2 className="w-3 h-3 text-blue-400" />
-                                                            <p className="text-[10px] text-zinc-600">ผู้เช่าที่ยืนยันแล้ว</p>
-                                                        </div>
-                                                    </div>
-                                                    <ExternalLink className="w-3.5 h-3.5 text-zinc-600" />
-                                                </button>
-                                            </div>
-                                        )}
 
-                                        {/* Fixed Expenses */}
+                                        {/* Fixed Expenses (Service Fees) - Compact Grid */}
                                         {currentApt?.fixedExpenses && currentApt.fixedExpenses.length > 0 && (
-                                            <div className="px-5 py-4">
-                                                <button onClick={() => setShowExpenses(!showExpenses)} className="w-full flex items-center justify-between mb-2">
-                                                    <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">ค่าบริการ</p>
-                                                    <ChevronDown className={`w-3.5 h-3.5 text-zinc-600 transition-transform ${showExpenses ? 'rotate-180' : ''}`} />
-                                                </button>
-                                                {showExpenses && (
-                                                    <div className="space-y-1.5">
-                                                        {currentApt.fixedExpenses.map((expense, idx) => {
-                                                            const isActive = selectedRoom.fixedExpenses?.find(fe => fe.name === expense.name)?.active;
-                                                            return (
-                                                                <button
-                                                                    key={idx}
-                                                                    onClick={() => {
-                                                                        const currentFixed = selectedRoom.fixedExpenses || [];
-                                                                        const existingIdx = currentFixed.findIndex(fe => fe.name === expense.name);
-                                                                        let newFixed;
-                                                                        if (existingIdx >= 0) { newFixed = [...currentFixed]; newFixed[existingIdx].active = !newFixed[existingIdx].active; }
-                                                                        else newFixed = [...currentFixed, { ...expense, active: true }];
-                                                                        setSelectedRoom({ ...selectedRoom, fixedExpenses: newFixed });
-                                                                    }}
-                                                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs transition-all ${isActive ? 'bg-brand-orange-500/5 border-brand-orange-500/20 text-white' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:border-white/10'}`}
-                                                                >
-                                                                    <span className="font-medium">{expense.name}</span>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className={`font-bold ${isActive ? 'text-brand-orange-400' : 'text-zinc-600'}`}>{expense.amount?.toLocaleString()} ฿</span>
-                                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isActive ? 'bg-brand-orange-500 border-brand-orange-500' : 'border-zinc-700'}`}>
-                                                                            {isActive && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
-                                                                        </div>
-                                                                    </div>
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
+                                            <div className="px-5 py-3 border-t border-white/[0.04]">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">ค่าบริการรายเดือน</p>
+                                                    <span className="text-[8px] font-bold text-zinc-600 uppercase">เปิด/ปิด</span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-1.5">
+                                                    {currentApt.fixedExpenses.map((expense, idx) => {
+                                                        const activeExpenses = selectedRoom.fixedExpenses || [];
+                                                        const isActive = activeExpenses.find(fe => fe.name === expense.name)?.active;
+                                                        return (
+                                                            <button
+                                                                key={idx}
+                                                                onClick={() => {
+                                                                    const currentFixed = [...(selectedRoom.fixedExpenses || [])];
+                                                                    const existingIdx = currentFixed.findIndex(fe => fe.name === expense.name);
+                                                                    if (existingIdx >= 0) {
+                                                                        currentFixed[existingIdx].active = !currentFixed[existingIdx].active;
+                                                                    } else {
+                                                                        currentFixed.push({ ...expense, active: true });
+                                                                    }
+                                                                    setSelectedRoom({ ...selectedRoom, fixedExpenses: currentFixed });
+                                                                }}
+                                                                className={`flex items-center justify-between px-2 py-1.5 rounded-lg border text-[10px] transition-all ${isActive
+                                                                        ? 'bg-brand-orange-500/10 border-brand-orange-500/30 text-white shadow-sm'
+                                                                        : 'bg-zinc-900/40 border-white/5 text-zinc-500 hover:border-white/10'
+                                                                    }`}
+                                                            >
+                                                                <span className="font-bold truncate max-w-[60px]">{expense.name}</span>
+                                                                <span className={`font-black ${isActive ? 'text-brand-orange-400' : 'text-zinc-700'}`}>
+                                                                    {expense.amount?.toLocaleString()}
+                                                                </span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         )}
 
